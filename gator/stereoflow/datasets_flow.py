@@ -16,8 +16,8 @@ import h5py
 import torch
 from torch.utils import data
 
-from .augmentor import FlowAugmentor
-from .datasets_stereo import _read_img, img_to_tensor, dataset_to_root, _read_pfm
+from gator.stereoflow.augmentor import FlowAugmentor
+from gator.stereoflow.datasets_stereo import _read_img, img_to_tensor, dataset_to_root, _read_pfm
 from copy import deepcopy
 dataset_to_root = deepcopy(dataset_to_root)
 

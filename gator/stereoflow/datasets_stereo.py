@@ -18,7 +18,7 @@ import cv2
 import torch
 from torch.utils import data
 
-from .augmentor import StereoAugmentor
+from gator.stereoflow.augmentor import StereoAugmentor
 
 
 

@@ -15,17 +15,17 @@ from tqdm import tqdm
 import torch
 from torch.utils.data import DataLoader
 
-import utils.misc as misc
-from models.croco_downstream import CroCoDownstreamBinocular
-from models.head_downstream import PixelwiseTaskWithDPT
+import gator.utils.misc as misc
+from gator.models.croco_downstream import CroCoDownstreamBinocular
+from gator.models.head_downstream import PixelwiseTaskWithDPT
 
-from stereoflow.criterion import *
-from stereoflow.datasets_stereo import get_test_datasets_stereo
-from stereoflow.datasets_flow import get_test_datasets_flow
-from stereoflow.engine import tiled_pred
+from gator.stereoflow.criterion import *
+from gator.stereoflow.datasets_stereo import get_test_datasets_stereo
+from gator.stereoflow.datasets_flow import get_test_datasets_flow
+from gator.stereoflow.engine import tiled_pred
 
-from stereoflow.datasets_stereo import vis_disparity
-from stereoflow.datasets_flow import flowToColor
+from gator.stereoflow.datasets_stereo import vis_disparity
+from gator.stereoflow.datasets_flow import flowToColor
 
 def get_args_parser():
     parser = argparse.ArgumentParser('Test CroCo models on stereo/flow', add_help=False)

@@ -13,7 +13,7 @@ The forward takes the features as well as a dictionary img_info containing the k
 
 import torch
 import torch.nn as nn
-from .dpt_block import DPTOutputAdapter
+from gator.models.dpt_block import DPTOutputAdapter
 
 
 class PixelwiseTaskWithDPT(nn.Module):

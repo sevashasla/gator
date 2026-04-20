@@ -21,17 +21,17 @@ import torchvision.transforms as transforms
 import torchvision.datasets as datasets
 from torch.utils.data import DataLoader
 
-import utils
-import utils.misc as misc
-from utils.misc import NativeScalerWithGradNormCount as NativeScaler
-from models.croco_downstream import CroCoDownstreamBinocular, croco_args_from_ckpt
-from models.pos_embed import interpolate_pos_embed
-from models.head_downstream import PixelwiseTaskWithDPT
+import gator.utils
+import gator.utils.misc as misc
+from gator.utils.misc import NativeScalerWithGradNormCount as NativeScaler
+from gator.models.croco_downstream import CroCoDownstreamBinocular, croco_args_from_ckpt
+from gator.models.pos_embed import interpolate_pos_embed
+from gator.models.head_downstream import PixelwiseTaskWithDPT
 
-from stereoflow.datasets_stereo import get_train_dataset_stereo, get_test_datasets_stereo
-from stereoflow.datasets_flow import get_train_dataset_flow, get_test_datasets_flow
-from stereoflow.engine import train_one_epoch, validate_one_epoch
-from stereoflow.criterion import *
+from gator.stereoflow.datasets_stereo import get_train_dataset_stereo, get_test_datasets_stereo
+from gator.stereoflow.datasets_flow import get_train_dataset_flow, get_test_datasets_flow
+from gator.stereoflow.engine import train_one_epoch, validate_one_epoch
+from gator.stereoflow.criterion import *
 
 
 def get_args_parser():

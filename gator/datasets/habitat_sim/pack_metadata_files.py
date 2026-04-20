@@ -8,7 +8,7 @@ import glob
 from tqdm import tqdm
 import shutil
 import json
-from datasets.habitat_sim.paths import *
+from gator.datasets.habitat_sim.paths import *
 import argparse
 import collections
 
