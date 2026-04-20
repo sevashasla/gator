@@ -186,7 +186,7 @@ class MultiviewHabitatSimGenerator:
             depth_sensor_spec.sensor_type = habitat_sim.SensorType.DEPTH
             depth_sensor_spec.resolution = self.resolution
             depth_sensor_spec.hfov = self.hfov
-            depth_sensor_spec.position = [0.0, 0.0, 0]
+            depth_sensor_spec.position = np.array([0.0, 0.0, 0], dtype=np.float32)
             depth_sensor_spec.orientation
 
             rgb_sensor_spec = habitat_sim.CameraSensorSpec()
@@ -194,7 +194,7 @@ class MultiviewHabitatSimGenerator:
             rgb_sensor_spec.sensor_type = habitat_sim.SensorType.COLOR
             rgb_sensor_spec.resolution = self.resolution
             rgb_sensor_spec.hfov = self.hfov
-            rgb_sensor_spec.position = [0.0, 0.0, 0]
+            rgb_sensor_spec.position = np.array([0.0, 0.0, 0], dtype=np.float32)
             agent_cfg = habitat_sim.agent.AgentConfiguration(sensor_specifications=[rgb_sensor_spec, depth_sensor_spec])
 
             cfg = habitat_sim.Configuration(sim_cfg, [agent_cfg])

@@ -15,6 +15,11 @@ dependencies = [
     "lightning>=2.5.0",
     "setuptools",
     "torchmetrics",
+    "scikit-learn",
+    "tqdm",
+    "quaternion", 
+    "opencv-python",
+    "tyro"
 ]
 
 [tool.uv.sources]

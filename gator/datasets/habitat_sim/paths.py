@@ -13,31 +13,31 @@ from tqdm import tqdm
 
 # Hardcoded path to the different scene datasets
 SCENES_DATASET = {
-    "hm3d": "./data/habitat-sim-data/scene_datasets/hm3d/",
-    "gibson": "./data/habitat-sim-data/scene_datasets/gibson/",
-    "habitat-test-scenes": "./data/habitat-sim/scene_datasets/habitat-test-scenes/",
-    "replica_cad_baked_lighting": "./data/habitat-sim/scene_datasets/replica_cad_baked_lighting/",
-    "replica_cad": "./data/habitat-sim/scene_datasets/replica_cad/",
-    "replica": "./data/habitat-sim/scene_datasets/ReplicaDataset/",
-    "scannet": "./data/habitat-sim/scene_datasets/scannet/"
+    "hm3d": "/scratch/izar/skorokho/habitat-sim-hm3d/versioned_data/hm3d-0.2/hm3d",
+    # "gibson": "./data/habitat-sim-data/scene_datasets/gibson/",
+    "habitat-test-scenes": "/scratch/izar/skorokho/habitat-test-scenes/versioned_data/",
+    "replica_cad_baked_lighting": "/scratch/izar/skorokho/replica_cad_baked_lighting/replica_cad_baked_lighting",
+    # "replica_cad": "./data/habitat-sim/scene_datasets/replica_cad/",
+    "replica": "/scratch/izar/skorokho/replica_v1/",
+    # "scannet": "./data/habitat-sim/scene_datasets/scannet/"
 }
 
 SceneData = collections.namedtuple("SceneData", ["scene_dataset_config_file", "scene", "navmesh", "output_dir"])
 
-def list_replicacad_scenes(base_output_dir, base_path=SCENES_DATASET["replica_cad"]):
-    scene_dataset_config_file = os.path.join(base_path, "replicaCAD.scene_dataset_config.json")
-    scenes = [f"apt_{i}" for i in range(6)] + ["empty_stage"]
-    navmeshes = [f"navmeshes/apt_{i}_static_furniture.navmesh" for i in range(6)] + ["empty_stage.navmesh"]
-    scenes_data = []
-    for idx in range(len(scenes)):
-        output_dir = os.path.join(base_output_dir, "ReplicaCAD", scenes[idx])
-        # Add scene
-        data = SceneData(scene_dataset_config_file=scene_dataset_config_file,
-                    scene = scenes[idx] + ".scene_instance.json",
-                    navmesh = os.path.join(base_path, navmeshes[idx]),
-                    output_dir = output_dir)
-        scenes_data.append(data)
-    return scenes_data
+# def list_replicacad_scenes(base_output_dir, base_path=SCENES_DATASET["replica_cad"]):
+#     scene_dataset_config_file = os.path.join(base_path, "replicaCAD.scene_dataset_config.json")
+#     scenes = [f"apt_{i}" for i in range(6)] + ["empty_stage"]
+#     navmeshes = [f"navmeshes/apt_{i}_static_furniture.navmesh" for i in range(6)] + ["empty_stage.navmesh"]
+#     scenes_data = []
+#     for idx in range(len(scenes)):
+#         output_dir = os.path.join(base_output_dir, "ReplicaCAD", scenes[idx])
+#         # Add scene
+#         data = SceneData(scene_dataset_config_file=scene_dataset_config_file,
+#                     scene = scenes[idx] + ".scene_instance.json",
+#                     navmesh = os.path.join(base_path, navmeshes[idx]),
+#                     output_dir = output_dir)
+#         scenes_data.append(data)
+#     return scenes_data
 
 def list_replica_cad_baked_lighting_scenes(base_output_dir, base_path=SCENES_DATASET["replica_cad_baked_lighting"]):
     scene_dataset_config_file = os.path.join(base_path, "replicaCAD_baked.scene_dataset_config.json")
@@ -108,9 +108,9 @@ def list_scenes_available(base_output_dir, scenes_dataset_paths=SCENES_DATASET):
         scenes_data += list_scenes(base_output_dir=os.path.join(base_output_dir, f"hm3d/{split}/"),
                                     base_path=f"{scenes_dataset_paths['hm3d']}/{split}")
 
-    # Gibson
-    scenes_data += list_scenes(base_output_dir=os.path.join(base_output_dir, "gibson"),
-                                base_path=scenes_dataset_paths["gibson"])
+    # # Gibson
+    # scenes_data += list_scenes(base_output_dir=os.path.join(base_output_dir, "gibson"),
+    #                             base_path=scenes_dataset_paths["gibson"])
 
     # Habitat test scenes (just a few)
     scenes_data += list_scenes(base_output_dir=os.path.join(base_output_dir, "habitat-test-scenes"),
@@ -119,11 +119,11 @@ def list_scenes_available(base_output_dir, scenes_dataset_paths=SCENES_DATASET):
     # ReplicaCAD (baked lightning)
     scenes_data += list_replica_cad_baked_lighting_scenes(base_output_dir=base_output_dir)
 
-    # ScanNet
-    scenes_data += list_scenes(base_output_dir=os.path.join(base_output_dir, "scannet"), 
-                            base_path=scenes_dataset_paths["scannet"])
+    # # ScanNet
+    # scenes_data += list_scenes(base_output_dir=os.path.join(base_output_dir, "scannet"), 
+    #                         base_path=scenes_dataset_paths["scannet"])
     
     # Replica
-    list_replica_scenes(base_output_dir=os.path.join(base_output_dir, "replica"),
+    scenes_data += list_replica_scenes(base_output_dir=os.path.join(base_output_dir, "replica"),
                         base_path=scenes_dataset_paths["replica"])
     return scenes_data    

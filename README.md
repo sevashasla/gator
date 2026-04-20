@@ -21,6 +21,12 @@ conda activate habitat
 conda install habitat-sim headless -c conda-forge -c aihabitat
 ```
 
+```bash
+cd gator &&
+python3 gator/datasets/habitat_sim/generate_from_metadata_files.py --input_dir /scratch/izar/skorokho/multiview_habitat_metadata/ --output_dir /scratch/izar/skorokho/croco-dataset/
+
+```
+
 # Acknowledgements
 
 We thank the authors of [`croco`](https://github.com/naver/croco) for their amazing work!

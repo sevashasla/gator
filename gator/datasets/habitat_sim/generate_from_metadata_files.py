@@ -23,5 +23,5 @@ if __name__ == "__main__":
         # Do not process the scene if the metadata file already exists
         if os.path.exists(os.path.join(output_dir, "metadata.json")):
             continue
-        commandline = f"{args.prefix}python datasets/habitat_sim/generate_from_metadata.py --metadata_filename={metadata_filename} --output_dir={output_dir}"
+        commandline = f"{args.prefix}python3 -m datasets.habitat_sim.generate_from_metadata --metadata_filename={metadata_filename} --output_dir={output_dir}"
         print(commandline)
