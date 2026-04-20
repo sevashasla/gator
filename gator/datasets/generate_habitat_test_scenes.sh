@@ -1,0 +1,3 @@
+python3 -m datasets.habitat_sim.generate_from_metadata --metadata_filename=/scratch/izar/skorokho/multiview_habitat_metadata/habitat-test-scenes/van-gogh-room/metadata.json --output_dir=/scratch/izar/skorokho/croco-dataset/habitat-test-scenes/van-gogh-room
+python3 -m datasets.habitat_sim.generate_from_metadata --metadata_filename=/scratch/izar/skorokho/multiview_habitat_metadata/habitat-test-scenes/skokloster-castle/metadata.json --output_dir=/scratch/izar/skorokho/croco-dataset/habitat-test-scenes/skokloster-castle
+python3 -m datasets.habitat_sim.generate_from_metadata --metadata_filename=/scratch/izar/skorokho/multiview_habitat_metadata/habitat-test-scenes/apartment_1/metadata.json --output_dir=/scratch/izar/skorokho/croco-dataset/habitat-test-scenes/apartment_1

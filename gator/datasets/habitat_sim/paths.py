@@ -15,7 +15,7 @@ from tqdm import tqdm
 SCENES_DATASET = {
     "hm3d": "/scratch/izar/skorokho/habitat-sim-hm3d/versioned_data/hm3d-0.2/hm3d",
     # "gibson": "./data/habitat-sim-data/scene_datasets/gibson/",
-    "habitat-test-scenes": "/scratch/izar/skorokho/habitat-test-scenes/versioned_data/",
+    "habitat-test-scenes": "/scratch/izar/skorokho/habitat-test-scenes/scene_datasets/habitat-test-scenes",
     "replica_cad_baked_lighting": "/scratch/izar/skorokho/replica_cad_baked_lighting/replica_cad_baked_lighting",
     # "replica_cad": "./data/habitat-sim/scene_datasets/replica_cad/",
     "replica": "/scratch/izar/skorokho/replica_v1/",
