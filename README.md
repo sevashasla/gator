@@ -1,2 +1,27 @@
 # gator
 Multiview Jigsaw-Puzzle solving as a pretraining task
+
+# Installation
+
+1. Install [uv](https://docs.astral.sh/uv/getting-started/installation/)
+2. Run
+
+```
+uv venv && uv sync --all-extras
+```
+
+# Dataset generation
+
+1. Install conda (we recomment using [`miniforge`](https://github.com/conda-forge/miniforge))
+
+2. Create an environment for habitat
+```bash
+conda create -n habitat python=3.9
+conda activate habitat
+conda install habitat-sim headless -c conda-forge -c aihabitat
+```
+
+# Acknowledgements
+
+We thank the authors of [`croco`](https://github.com/naver/croco) for their amazing work!
+
