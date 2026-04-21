@@ -19,7 +19,11 @@ dependencies = [
     "tqdm",
     "quaternion", 
     "opencv-python",
-    "tyro"
+    "tyro",
+    "ipywidgets",
+    "ipykernel",
+    "matplotlib",
+    "numpy-quaternion"
 ]
 
 [tool.uv.sources]
