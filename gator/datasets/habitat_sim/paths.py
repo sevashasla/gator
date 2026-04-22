@@ -19,7 +19,7 @@ SCENES_DATASET = {
     "replica_cad_baked_lighting": "/scratch/izar/skorokho/replica_cad_baked_lighting/replica_cad_baked_lighting",
     # "replica_cad": "./data/habitat-sim/scene_datasets/replica_cad/",
     "replica": "/scratch/izar/skorokho/replica_v1/",
-    # "scannet": "./data/habitat-sim/scene_datasets/scannet/"
+    "scannet": "/scratch/izar/skorokho/test/scannet_cached/scans/"
 }
 
 SceneData = collections.namedtuple("SceneData", ["scene_dataset_config_file", "scene", "navmesh", "output_dir"])
@@ -120,8 +120,11 @@ def list_scenes_available(base_output_dir, scenes_dataset_paths=SCENES_DATASET):
     scenes_data += list_replica_cad_baked_lighting_scenes(base_output_dir=base_output_dir)
 
     # # ScanNet
-    # scenes_data += list_scenes(base_output_dir=os.path.join(base_output_dir, "scannet"), 
-    #                         base_path=scenes_dataset_paths["scannet"])
+    scannet_scenes += list_scenes(base_output_dir=os.path.join(base_output_dir, "scannet"), 
+                            base_path=scenes_dataset_paths["scannet"])
+
+    print(f"Total number of scenes found: {len(scannet_scenes)}")
+    scenes_data += scannet_scenes
     
     # Replica
     scenes_data += list_replica_scenes(base_output_dir=os.path.join(base_output_dir, "replica"),
