@@ -62,7 +62,8 @@ class CroCoWrapper(L.LightningModule):
 
     def on_train_batch_start(self, batch, batch_idx) -> None | int:
         optimizer = self.optimizers()
-        steps_per_epoch = len(self.trainer.train_dataloader)
+        # steps_per_epoch = len(self.trainer.train_dataloader)
+        steps_per_epoch = 28_000 # TODO
         epoch = self.global_step / steps_per_epoch
         misc.adjust_learning_rate(
             optimizer, epoch, 
@@ -71,7 +72,8 @@ class CroCoWrapper(L.LightningModule):
         super().on_train_batch_start(batch, batch_idx)
 
     def training_step(self, batch, batch_idx):
-        batch = torch.stack(batch, dim=0) # (B, 2, C, H, W)
+        # batch = torch.stack(batch, dim=0) # (B, 2, C, H, W)
+        batch = torch.stack(batch, dim=1) # (B, 2, C, H, W)
 
         out, mask1, target = self.forward(batch)
         loss = self._loss_fn(out, mask1, target)
@@ -79,7 +81,7 @@ class CroCoWrapper(L.LightningModule):
         return loss
     
     def validation_step(self, batch, batch_idx):
-        batch = torch.stack(batch, dim=0) # (B, 2, C, H, W)
+        batch = torch.stack(batch, dim=1) # (B, 2, C, H, W)
         
         out, mask1, target = self.forward(batch)
         loss = self._loss_fn(out, mask1, target)

@@ -26,6 +26,7 @@ from gator.datasets.shard.transforms import get_pair_transforms
 class TrainingArguments:
     """
     On the cluster each node has two V100 32GB GPUs.
+    With num_workers=4 it already achieves around 90% GPU utilization.
     """
     norm_pix_loss: Literal[0, 1] = 1
     """apply per-patch mean/std normalization before applying the loss"""
@@ -130,9 +131,22 @@ def main(args: TrainingArguments):
     #     pin_memory=True,
     #     drop_last=True,
     # )
+
     dataset = wds.WebDataset(
-        urls=str(args.data_dir / "train-{000000..000180}.tar"),
+        urls=str(args.data_dir / args.dataset / "train-{000000..000180}.tar"),
         shardshuffle=True,
+    )\
+        .shuffle(512)\
+        .decode("pil")\
+        .rename(im1="im1.jpg", im2="im2.jpg")\
+        .to_tuple("im1", "im2")\
+        .map(lambda x: transform(x[0], x[1]))\
+        .batched(args.batch_size, partial=False)
+
+    data_loader_train = torch.utils.data.DataLoader(
+        dataset,
+        num_workers=args.num_workers,
+        batch_size=None,
     )
 
     # learning rates

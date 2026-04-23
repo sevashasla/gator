@@ -17,10 +17,15 @@ class NormalizeBoth(T.Normalize):
         img2 = super().forward(img2)
         return img1, img2
 
-class ToTensorBoth(T.ToTensor):
+class ToTensorBoth(T.Transform):
+    def __init__(self):
+        super().__init__()
+        # self.tf = T.ToDtype(torch.float32, scale=True)
+        self.tf = T.ToTensor()
+
     def __call__(self, img1, img2):
-        img1 = super().__call__(img1)
-        img2 = super().__call__(img2)
+        img1 = self.tf(img1)
+        img2 = self.tf(img2)
         return img1, img2
         
 class RandomCropPair(T.RandomCrop): 
