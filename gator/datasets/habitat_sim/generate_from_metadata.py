@@ -5,8 +5,8 @@
 Script to generate image pairs for a given scene reproducing poses provided in a metadata file.
 """
 import os
-from gator.datasets.habitat_sim.multiview_habitat_sim_generator import MultiviewHabitatSimGenerator
-from gator.datasets.habitat_sim.paths import SCENES_DATASET
+from .multiview_habitat_sim_generator import MultiviewHabitatSimGenerator
+from .paths import SCENES_DATASET
 import argparse
 import quaternion
 import PIL.Image
