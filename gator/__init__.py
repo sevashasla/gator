@@ -13,7 +13,7 @@ console_handler.setFormatter(formatter)
 
 logger.addHandler(console_handler)
 
-log_file = Path("outputs/rebel_pose.log")
+log_file = Path("outputs/gator.log")
 log_file.parent.mkdir(parents=True, exist_ok=True)
 file_handler = logging.FileHandler(log_file)
 file_handler.setFormatter(formatter)

@@ -41,12 +41,6 @@ class TrainingArguments:
     # training 
     seed: int = 0
     """Random seed"""
-    batch_size: int = 64
-    """Batch size per GPU (effective batch size is batch_size * accum_iter * # gpus"""
-    epochs: int = 800
-    """Maximum number of epochs for the scheduler"""
-    max_epoch: int = 400
-    """Stop training at this epoch"""
     
     """
     Accumulate gradient iterations (for increasing the effective batch size
@@ -140,7 +134,7 @@ def main(args: TrainingArguments):
     model_wrapped = CroCoWrapper(
         model=model, 
         loss_fn=criterion,
-        optimization_params=args.opt_params,
+        optimization_config=args.opt_params,
     )
 
     logger.info(f"Model = {str(model_wrapped)}")

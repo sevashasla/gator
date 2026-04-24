@@ -14,11 +14,11 @@ from lightning import Trainer, seed_everything
 from lightning.pytorch.loggers import WandbLogger
 from lightning.pytorch.callbacks import ModelCheckpoint
 
-from gator.models.criterion import MaskedMSE
-from gator.models.croco import CroCoNet
+from gator.models.model_gator import GatorConfig, Gator
+from gator.models.gator_losses import GatorLossConfig
 import gator.utils.misc as misc
 from gator import logger
-from gator.models.croco_wrapper import CroCoWrapper, OptimizationParameters
+from gator.models.gator_wrapper import GatorWrapper, OptimizationParameters
 import webdataset as wds
 from gator.datasets.shard.transforms import get_pair_transforms
 
@@ -28,9 +28,9 @@ class TrainingArguments:
     On the cluster each node has two V100 32GB GPUs.
     With num_workers=4 it already achieves around 90% GPU utilization.
     """
-    norm_pix_loss: Literal[0, 1] = 1
-    """apply per-patch mean/std normalization before applying the loss"""
-    
+
+    gator_loss_config: GatorLossConfig  
+    gator_config: GatorConfig
     
     # dataset 
     dataset: str = 'habitat_release_shards'
@@ -105,21 +105,6 @@ def main(args: TrainingArguments):
 
     ## training dataset and loader 
     logger.info('Building dataset for {:s} with transforms {:s}'.format(args.dataset, args.transforms))
-    # dataset = PairsDataset(args.dataset, trfs=args.transforms, data_dir=args.data_dir)
-    # if world_size > 1:
-    #     sampler_train = torch.utils.data.DistributedSampler(
-    #         dataset, num_replicas=world_size, rank=global_rank, shuffle=True
-    #     )
-    #     logger.info(f"Sampler_train = {str(sampler_train)}")
-    # else:
-    #     sampler_train = torch.utils.data.RandomSampler(dataset)
-    # data_loader_train = torch.utils.data.DataLoader(
-    #     dataset, sampler=sampler_train,
-    #     batch_size=args.batch_size,
-    #     num_workers=args.num_workers,
-    #     pin_memory=True,
-    #     drop_last=True,
-    # )
 
     dataset = wds.WebDataset(
         urls=str(args.data_dir / args.dataset / "train-{000000..000180}.tar"),
@@ -142,20 +127,26 @@ def main(args: TrainingArguments):
     args.opt_params.update_lr(args.batch_size)
    
     ## model 
-    model = CroCoNet()
-    model.to(device)
+    loss_cls = args.gator_loss_config.get_loss()
+    criterion = loss_cls(
+        grid_size=(
+            args.gator_config.image_size // args.gator_config.patch_size, 
+            args.gator_config.image_size // args.gator_config.patch_size
+        ),
+        patch_size=args.gator_config.patch_size,
+    )
 
-    logger.info(f'Loading criterion: MaskedMSE(norm_pix_loss={str(bool(args.norm_pix_loss))})')
-    criterion = MaskedMSE(norm_pix_loss=bool(args.norm_pix_loss))
+    model = Gator(args.gator_config, args.gator_loss_config)
+    model.to(device)
     
-    model_wrapped = CroCoWrapper(
+    model_wrapped = GatorWrapper(
         model=model, 
         loss_fn=criterion,
         optimization_config=args.opt_params,
     )
 
     logger.info(f"Model = {str(model_wrapped)}")
-    logger.info(f"Start training until {args.max_epoch} epochs")
+    logger.info(f"Start training until {args.opt_params.max_epoch} epochs")
     
     wandb_logger = WandbLogger(
         save_dir=args.output_dir,
@@ -187,7 +178,7 @@ def main(args: TrainingArguments):
     trainer = Trainer(
         logger=wandb_logger,
         precision=args.precision,
-        max_epochs=args.max_epoch,
+        max_epochs=args.opt_params.max_epoch,
         accelerator="gpu",
         callbacks=[model_checkpoint_callback],
     )

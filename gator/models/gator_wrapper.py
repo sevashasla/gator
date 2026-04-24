@@ -2,10 +2,12 @@ from dataclasses import dataclass
 
 import lightning as L
 import torch
-from gator.models.criterion import MaskedMSE
-from gator.models.croco import CroCoNet
+
+from gator.models.model_gator import Gator
+from gator.models.gator_losses.base import GatorBaseLoss
 from gator.utils import misc
 from gator import logger
+from transformers import get_cosine_schedule_with_warmup
 
 @dataclass
 class OptimizationParameters:
@@ -31,8 +33,16 @@ class OptimizationParameters:
     max_epoch: int = 400
     """Stop training at this epoch"""
 
+    dataset_size: int = 181*10000
+    """
+    number of shards * shard_size
+    """
+
+    steps_per_epoch: int | None = None
+
     def __post_init__(self):
         self.update_lr()
+        self.update_steps_per_epoch()
 
     def update_lr(self):
         eff_batch_size = self.batch_size * self.accum_iter * misc.get_world_size()
@@ -40,17 +50,23 @@ class OptimizationParameters:
             self.lr = self.blr * eff_batch_size / 256
         
         logger.info("Updated LR")
-        logger.info("base lr: %.2e" % (self.lr * 256 / eff_batch_size))
-        logger.info("actual lr: %.2e" % self.lr)
-        logger.info("accumulate grad iterations: %d" % self.accum_iter)
-        logger.info("effective batch size: %d" % eff_batch_size)
+        logger.info(f"base lr: {self.lr * 256 / eff_batch_size:.2e}")
+        logger.info(f"actual lr: {self.lr:.2e}")
+        logger.info(f"accumulate grad iterations: {self.accum_iter}")
+        logger.info(f"effective batch size: {eff_batch_size}")
+
+    def update_steps_per_epoch(self):
+        if self.steps_per_epoch is None:
+            self.steps_per_epoch = self.dataset_size // (self.batch_size * misc.get_world_size())
+        
+        logger.info(f"Updated steps per epoch: {self.steps_per_epoch}")
 
 
-class CroCoWrapper(L.LightningModule):
+class GatorWrapper(L.LightningModule):
     def __init__(
             self, 
-            model: CroCoNet,
-            loss_fn: MaskedMSE,
+            model: Gator,
+            loss_fn: GatorBaseLoss,
             optimization_config: OptimizationParameters,
         ) -> None:
         super().__init__()
@@ -66,49 +82,53 @@ class CroCoWrapper(L.LightningModule):
         image_to_pred = images[:, 0, :, :, :]
         image_ref = images[:, 1, :, :, :]
 
-        out, mask1, target = self._model(image_to_pred, image_ref)
-        return out, mask1, target
-
-    def on_train_batch_start(self, batch, batch_idx) -> None | int:
-        optimizer = self.optimizers()
-        # steps_per_epoch = len(self.trainer.train_dataloader)
-        steps_per_epoch = 28_000 # TODO
-        epoch = self.global_step / steps_per_epoch
-        misc.adjust_learning_rate(
-            optimizer, epoch, 
-            self._opt_config,
-        )
-        super().on_train_batch_start(batch, batch_idx)
+        out, gt_pos, num_register_tokens = self._model(image_to_pred, image_ref)
+        return out, gt_pos, num_register_tokens
 
     def training_step(self, batch, batch_idx):
         # batch = torch.stack(batch, dim=0) # (B, 2, C, H, W)
         batch = torch.stack(batch, dim=1) # (B, 2, C, H, W)
 
-        out, mask1, target = self.forward(batch)
-        loss = self._loss_fn(out, mask1, target)
+        out, gt_pos, num_register_tokens = self.forward(batch)
+        loss = self._loss_fn(
+            pred=out, 
+            gt_pos=gt_pos, 
+            gt_image=batch[:, 0, :, :, :],
+            num_register_tokens=num_register_tokens,
+        )
         self.log("train_loss", loss, sync_dist=True)
         return loss
     
     def validation_step(self, batch, batch_idx):
         batch = torch.stack(batch, dim=1) # (B, 2, C, H, W)
         
-        out, mask1, target = self.forward(batch)
-        loss = self._loss_fn(out, mask1, target)
+        out, gt_pos, num_register_tokens = self.forward(batch)
+        loss = self._loss_fn(
+            pred=out, 
+            gt_pos=gt_pos, 
+            gt_image=batch[:, 0, :, :, :],
+            num_register_tokens=num_register_tokens,
+        )
         self.log("val_loss", loss, on_step=False, on_epoch=True, sync_dist=True)
         return loss
     
-    def configure_optimizers(self) -> torch.optim.Optimizer:
+    def configure_optimizers(self):
         """
         Configures the optimizer and scheduler used in optimization.
-        """
-
-        param_groups = misc.get_parameter_groups(
-            self._model, self._opt_config.weight_decay
-        ) # following timm: set wd as 0 for bias and norm layers
+        """ 
         optimizer = torch.optim.AdamW(
-            param_groups, 
+            self._model.parameters(), 
             lr=self._opt_config.lr, 
-            betas=(0.9, 0.95)
+            weight_decay=self._opt_config.weight_decay,
         )
 
-        return optimizer
+        scheduler = get_cosine_schedule_with_warmup(
+            optimizer,
+            num_warmup_steps=self._opt_config.warmup_epochs * self._opt_config.steps_per_epoch,
+            num_training_steps=self._opt_config.epochs * self._opt_config.steps_per_epoch,
+        )
+
+        return {
+            "optimizer": optimizer,
+            "lr_scheduler": scheduler,
+        }

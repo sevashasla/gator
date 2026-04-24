@@ -35,6 +35,8 @@ class GatorConfig:
 
     rope_freq: int = 100.0
 
+    predict_position: bool = False
+
 class Gator(nn.Module):
     def __init__(self, config: GatorConfig) -> None:
         super().__init__()
@@ -97,7 +99,13 @@ class Gator(nn.Module):
         ])
 
         self._decoder_norm = nn.LayerNorm(self._config.dec_emb_dim)
-        self._decoder_pred = nn.Linear(self._config.dec_emb_dim, self._patch_embed.num_patches)
+        if self._config.predict_position:
+            self._decoder_pred = nn.Sequential(
+                nn.Linear(self._config.dec_emb_dim, 2),
+                nn.Tanh(),
+            )
+        else:
+            self._decoder_pred = nn.Linear(self._config.dec_emb_dim, self._patch_embed.num_patches)
 
     def _forward_encoder(self, img: torch.Tensor, shuffle: bool) -> torch.Tensor:
         x, pos = self._patch_embed(img) # (B, N, D), (B, N, 2)
