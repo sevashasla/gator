@@ -36,5 +36,5 @@ class cuRoPE2D(torch.nn.Module):
         self.F0 = F0
 
     def forward(self, tokens, positions): 
-        cuRoPE2D_func.apply( tokens.transpose(1,2), positions, self.base, self.F0 )
+        cuRoPE2D_func.apply( tokens.transpose(1,2).contiguous(), positions, self.base, self.F0 )
         return tokens
