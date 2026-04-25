@@ -25,7 +25,11 @@ dependencies = [
     "seaborn>=0.13.2",
     "webdataset>=1.0.2",
     "einops",
-    "h5py"
+    "h5py",
+    "ipywidgets",
+    "ipykernel",
+    "matplotlib",
+    "numpy-quaternion",
 ]
 
 [tool.uv.sources]
