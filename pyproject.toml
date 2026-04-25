@@ -23,7 +23,10 @@ dependencies = [
     "ipywidgets",
     "ipykernel",
     "matplotlib",
-    "numpy-quaternion"
+    "numpy-quaternion",
+    "tensorboard",
+    "einops",
+    "h5py"
 ]
 
 [tool.uv.sources]

@@ -22,12 +22,14 @@ from copy import deepcopy
 dataset_to_root = deepcopy(dataset_to_root)
 
 dataset_to_root.update(**{
-    'TartanAir': './data/stereoflow/TartanAir',
-    'FlyingChairs': './data/stereoflow/FlyingChairs/',
-    'FlyingThings': osp.join(dataset_to_root['SceneFlow'],'FlyingThings')+'/',
-    'MPISintel': './data/stereoflow//MPI-Sintel/'+'/',
+    # 'TartanAir': './data/stereoflow/TartanAir',
+    # 'FlyingChairs': './data/stereoflow/FlyingChairs/',
+    # 'FlyingThings': osp.join(dataset_to_root['SceneFlow'],'FlyingThings')+'/',
+    # 'MPISintel': './data/stereoflow//MPI-Sintel/'+'/',
+    
+    'FlyingChairs': '/scratch/izar/porpigli/FlyingChairs_release/',
 })
-cache_dir = "./data/stereoflow/datasets_flow_cache/"
+cache_dir = "/scratch/izar/porpigli/datasets_flow_cache/"
 
 
 def flow_to_tensor(disp):

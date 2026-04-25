@@ -23,20 +23,22 @@ from gator.stereoflow.augmentor import StereoAugmentor
 
 
 dataset_to_root = {
-    'CREStereo': './data/stereoflow//crenet_stereo_trainset/stereo_trainset/crestereo/',
-    'SceneFlow': './data/stereoflow//SceneFlow/',
-    'ETH3DLowRes': './data/stereoflow/eth3d_lowres/',
-    'Booster': './data/stereoflow/booster_gt/',
-    'Middlebury2021': './data/stereoflow/middlebury/2021/data/',
-    'Middlebury2014': './data/stereoflow/middlebury/2014/',
-    'Middlebury2006': './data/stereoflow/middlebury/2006/',
-    'Middlebury2005': './data/stereoflow/middlebury/2005/train/',
-    'MiddleburyEval3':  './data/stereoflow/middlebury/MiddEval3/',
-    'Spring': './data/stereoflow/spring/', 
-    'Kitti15': './data/stereoflow/kitti-stereo-2015/',
-    'Kitti12': './data/stereoflow/kitti-stereo-2012/',
+    # 'CREStereo': './data/stereoflow//crenet_stereo_trainset/stereo_trainset/crestereo/',
+    # 'SceneFlow': './data/stereoflow//SceneFlow/',
+    # 'ETH3DLowRes': './data/stereoflow/eth3d_lowres/',
+    # 'Booster': './data/stereoflow/booster_gt/',
+    # 'Middlebury2021': './data/stereoflow/middlebury/2021/data/',
+    # 'Middlebury2014': './data/stereoflow/middlebury/2014/',
+    # 'Middlebury2006': './data/stereoflow/middlebury/2006/',
+    # 'Middlebury2005': './data/stereoflow/middlebury/2005/train/',
+    # 'MiddleburyEval3':  './data/stereoflow/middlebury/MiddEval3/',
+    # 'Spring': './data/stereoflow/spring/', 
+    # 'Kitti15': './data/stereoflow/kitti-stereo-2015/',
+    # 'Kitti12': './data/stereoflow/kitti-stereo-2012/',
+    
+    'ETH3DLowRes': '/scratch/izar/porpigli/eth3d_lowres/',
 }
-cache_dir = "./data/stereoflow/datasets_stereo_cache/"
+cache_dir = "/scratch/izar/porpigli/datasets_stereo_cache/"
 
 
 in1k_mean = torch.tensor([0.485, 0.456, 0.406]).view(3,1,1)
