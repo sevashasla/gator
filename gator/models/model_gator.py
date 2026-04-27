@@ -5,6 +5,7 @@ import torch.nn as nn
 from gator.models.blocks import PatchEmbed, Block, DecoderBlock
 from gator.models.pos_embed import get_2d_sincos_pos_embed, RoPE2D
 
+
 from dataclasses import dataclass
 @dataclass
 class GatorConfig:
@@ -36,6 +37,9 @@ class GatorConfig:
     rope_freq: int = 100.0
 
     predict_position: bool = False
+
+_IMAGE_MEAN = [0.485, 0.456, 0.406]
+_IMAGE_STD = [0.229, 0.224, 0.225]
 
 class Gator(nn.Module):
     def __init__(self, config: GatorConfig) -> None:
@@ -107,14 +111,24 @@ class Gator(nn.Module):
         else:
             self._decoder_pred = nn.Linear(self._config.dec_emb_dim, self._patch_embed.num_patches)
 
-    def _forward_encoder(self, img: torch.Tensor, shuffle: bool) -> torch.Tensor:
+        # register normalization
+        for name, value in (("_image_mean", _IMAGE_MEAN), ("_image_std", _IMAGE_STD)):
+            self.register_buffer(name, torch.FloatTensor(value).view(1, 3, 1, 1), persistent=False)
+
+    def _forward_encoder(self, img: torch.Tensor, shuffle: bool, shuffle_ratio: float | None = None) -> torch.Tensor:
         x, pos = self._patch_embed(img) # (B, N, D), (B, N, 2)
         B, N, D = x.shape
         ground_truth_pos: torch.Tensor | None = None
 
         if shuffle:
             # select random tokens at each image
-            N1 = int(N * self._config.shuffle_ratio)
+            if shuffle_ratio is None:
+                rand_item = torch.rand(1).item()
+                rand_ratio = self._config.shuffle_ratio + (1.0 - self._config.shuffle_ratio) * rand_item
+            else:
+                rand_ratio = shuffle_ratio
+
+            N1 = int(N * rand_ratio)
 
             random_positions = torch.rand(B, N).argsort(dim=1) # (B, N)
             # random_positions = random_positions[:, :N1] # (B, N1)
@@ -160,10 +174,10 @@ class Gator(nn.Module):
         x = self._decoder_norm(x)
         return x
 
-    def forward(self, img1: torch.Tensor, img2: torch.Tensor):
+    def forward(self, img1: torch.Tensor, img2: torch.Tensor, shuffle_ratio: float | None = None):
         """
-        img1: (B, C, H, W)
-        img2: (B, C, H, W)
+        img1: (B, C, H, W), not normalized
+        img2: (B, C, H, W), not normalized
 
         1. use RoPE in encoder for img2
         2. do not use RoPE for encoder in img1
@@ -179,7 +193,10 @@ class Gator(nn.Module):
         **important** When calculating the loss do not forget to remove the register tokens
         """
 
-        img1_enc, img1_pos, img1_gt_pos = self._forward_encoder(img1, shuffle=True)
+        img1 = (img1 - self._image_mean) / self._image_std
+        img2 = (img2 - self._image_mean) / self._image_std
+
+        img1_enc, img1_pos, img1_gt_pos = self._forward_encoder(img1, shuffle=True, shuffle_ratio=shuffle_ratio)
         img2_enc, img2_pos, _ = self._forward_encoder(img2, shuffle=False)
 
         img1_to_dec = self._decoder_embed(img1_enc)

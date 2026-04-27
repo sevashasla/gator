@@ -130,7 +130,7 @@ def main(args: TrainingArguments):
         .rename(im1="im1.jpg", im2="im2.jpg")\
         .to_tuple("im1", "im2")\
         .map(lambda x: transform(x[0], x[1]))\
-        .batched(args.batch_size, partial=False)
+        .batched(args.opt_params.batch_size, partial=False)
 
     data_loader_train = torch.utils.data.DataLoader(
         dataset,
@@ -139,7 +139,7 @@ def main(args: TrainingArguments):
     )
 
     # learning rates
-    args.opt_params.update_lr(args.batch_size)
+    args.opt_params.update_lr()
    
     ## model 
     model = CroCoNet()
