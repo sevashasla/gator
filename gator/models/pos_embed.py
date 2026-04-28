@@ -104,6 +104,13 @@ def interpolate_pos_embed(model, checkpoint_model):
 try:
     from gator.models.curope import cuRoPE2D
     RoPE2D = cuRoPE2D
+    print(
+        "cuRoPE2D can only be used for inference, for training please use the PyTorch"
+        " version of RoPE2D (which is slower but supports autograd)"
+        "Please comment the line below to use cuRoPE2D"
+    )
+    raise ImportError("cuRoPE2D is not supported for training, using PyTorch version instead.")
+    
 except ImportError:
     print('Warning, cannot find cuda-compiled version of RoPE2D, using a slow pytorch version instead')
 

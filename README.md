@@ -10,6 +10,9 @@ Multiview Jigsaw-Puzzle solving as a pretraining task
 uv venv && uv sync --all-extras
 ```
 
+
+**important** cuRoPE2D does not have backward implemented, so for training use the pytorch version instead.
+
 # Dataset generation
 
 1. Install conda (we recomment using [`miniforge`](https://github.com/conda-forge/miniforge))
