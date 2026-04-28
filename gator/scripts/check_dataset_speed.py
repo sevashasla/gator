@@ -6,7 +6,7 @@ import time
 import torch
 from tqdm import tqdm
 
-from gator.datasets.shard.transforms import get_pair_transforms
+from gator.datasets.shard.transforms import get_pair_transforms_gator
 
 @dataclass(kw_only=True)
 class Args:
@@ -18,7 +18,7 @@ class Args:
 
 def main(args: Args):
 
-    transform = get_pair_transforms(args.transforms)
+    transform = get_pair_transforms_gator(args.transforms)
 
     dataset = wds.WebDataset(
             urls=str(args.data_dir / args.dataset / "train-{000000..000180}.tar"),

@@ -22,7 +22,7 @@ import gator.utils.misc as misc
 from gator import logger
 from gator.models.gator_wrapper import GatorWrapper, OptimizationParameters
 import webdataset as wds
-from gator.datasets.shard.transforms import get_pair_transforms
+from gator.datasets.shard.transforms import get_pair_transforms_gator
 
 @dataclass(kw_only=True)
 class TrainingArguments:
@@ -108,7 +108,8 @@ def main(args: TrainingArguments):
 
     cudnn.benchmark = True
 
-    transform = get_pair_transforms(args.transforms)
+    # normalization is done in the gator model itself
+    transform = get_pair_transforms_gator(args.transforms, normalize=False)
 
     ## training dataset and loader 
     logger.info('Building dataset for {:s} with transforms {:s}'.format(args.dataset, args.transforms))

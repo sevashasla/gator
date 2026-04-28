@@ -11,7 +11,11 @@ class ComposePair(T.Compose):
             img1, img2 = t(img1, img2)
         return img1, img2
 
-
+class NormalizeBoth(T.Normalize):
+    def forward(self, img1, img2):
+        img1 = super().forward(img1)
+        img2 = super().forward(img2)
+        return img1, img2
 class ToTensorBoth(T.Transform):
     def __init__(self):
         super().__init__()
@@ -44,7 +48,7 @@ class ColorJitterPair(T.ColorJitter):
 
         return img1, img2
 
-def get_pair_transforms(transform_str):
+def get_pair_transforms_gator(transform_str, normalize=False):
     # transform_str is eg    crop224+color
     trfs = []
     for s in transform_str.split('+'):
@@ -60,6 +64,8 @@ def get_pair_transforms(transform_str):
             
     
     trfs.append( ToTensorBoth() )
+    if normalize:
+        trfs.append( NormalizeBoth(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]) )
 
     if len(trfs)==1:
         return trfs
