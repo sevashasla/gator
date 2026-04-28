@@ -5,7 +5,7 @@ import torch
 
 from gator.models.model_gator import Gator
 from gator.models.gator_losses.base import GatorBaseLoss
-from gator.models.visualize_shuffle import VisualizeShuffle
+from gator.models.gator_visualizer.base import GatorBaseVis
 from gator.utils import misc
 from gator import logger
 from transformers import get_cosine_schedule_with_warmup
@@ -29,7 +29,7 @@ class OptimizationParameters:
     Accumulate gradient iterations (for increasing the effective batch size
     under memory constraints)
     """
-    batch_size: int = 64
+    batch_size: int = 128
     """Batch size per GPU (effective batch size is batch_size * accum_iter * # gpus"""
     epochs: int = 200
     """Maximum number of epochs for the scheduler"""
@@ -77,6 +77,7 @@ class GatorWrapper(L.LightningModule):
             self, 
             model: Gator,
             loss_fn: GatorBaseLoss,
+            visualizer: GatorBaseVis,
             optimization_config: OptimizationParameters,
         ) -> None:
         super().__init__()
@@ -88,10 +89,7 @@ class GatorWrapper(L.LightningModule):
             model._config.image_size // model._config.patch_size, 
             model._config.image_size // model._config.patch_size
         )
-        self._visualizer = VisualizeShuffle(
-            grid_size=self._grid_size,
-            patch_size=model._config.patch_size,
-        )
+        self._visualizer = visualizer
         self._acc = Accuracy(
             task="multiclass", 
             num_classes=self._grid_size[0] * self._grid_size[1],
@@ -154,22 +152,29 @@ class GatorWrapper(L.LightningModule):
         if batch_idx == 0:
             # randomly select 8 images from the batch
             indices = torch.randperm(batch.size(0))[:8]
-            images_gt = batch[indices, 0, :, :, :]
+            images_gt_part = batch[indices, 0, :, :, :]
+            images_gt_ref = batch[indices, 1, :, :, :]
 
-            images_pred = self._visualizer(
+            images_pred = self._visualizer.forward(
                 pred=out[indices], 
-                gt_image=images_gt,
+                gt_pos=gt_pos[indices],
+                gt_image=images_gt_part,
                 num_register_tokens=num_register_tokens,
             )
 
             # (8, C, H, W) -> (C, H, 8*W)
+            images_ref_cat = torch.cat(images_gt_ref.unbind(0), dim=-1)
+            images_gt_cat = torch.cat(images_gt_part.unbind(0), dim=-1)
             images_pred_cat = torch.cat(images_pred.unbind(0), dim=-1)
-            images_gt_cat = torch.cat(images_gt.unbind(0), dim=-1)
 
             # concatenate them into one image
             # (C, H, 8*W) -> (C, 2*H, 8*W)
-            images_cat = torch.cat([images_gt_cat, images_pred_cat], dim=1)
-            images_cat = TF.resize(images_cat, (112 * 2, 112 * 8))
+            images_cat = torch.cat([
+                images_ref_cat, 
+                images_gt_cat, 
+                images_pred_cat
+            ], dim=1)
+            images_cat = TF.resize(images_cat, (112 * 3, 112 * 8))
             images_cat = images_cat.clamp(0, 1)
 
             self.logger.log_image(

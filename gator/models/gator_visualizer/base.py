@@ -1,7 +1,8 @@
 import torch
+import torch.nn as nn
+from abc import abstractmethod
 
-
-class VisualizeShuffle:
+class GatorBaseVis(nn.Module):
     def __init__(
             self,
             grid_size: tuple[int, int],
@@ -40,37 +41,19 @@ class VisualizeShuffle:
         x = torch.einsum('nhwpqc->nchpwq', x)
         imgs = x.reshape(shape=(x.shape[0], channels, h * patch_size, h * patch_size))
         return imgs
-    
-    @torch.no_grad()
+
+    @abstractmethod
     def forward(
         self, 
         pred: torch.Tensor, 
+        gt_pos: torch.Tensor, 
         gt_image: torch.Tensor,
-        num_register_tokens: int
-    ) -> torch.Tensor:
-        """
-        pred: (B, n_reg+N1,N)
-        gt_image: (B, C, H, W)
-        num_register_tokens: int
-        """
-        pred_no_reg = pred[:, num_register_tokens:, :] # (B, N1, N)
-        pred_indices = pred_no_reg.argmax(dim=-1) # (B, N1)
-
-        patches = self.patchify(gt_image) # (B, N, D)
-        if patches.size(1) != self._num_patches:
-            raise ValueError(f"patches.size(1) should be {self._num_patches} but got {patches.size(1)}")
-        _, _, D = patches.shape
-        patches_pred = torch.zeros_like(patches)
-        patches_pred.scatter_reduce_(
-            dim=1,
-            index=pred_indices[:, :, None].expand(-1, -1, D),
-            src=patches,
-            reduce="mean",
-            include_self=False,
+        num_register_tokens: int,
+    ):
+        raise NotImplementedError(
+            "Forward method should be implemented by subclasses of GatorBaseVis"
         )
-
-        images_pred = self.unpatchify(patches_pred, channels=gt_image.shape[1])
-        return images_pred
 
     def __call__(self, *args, **kwargs):
         return self.forward(*args, **kwargs)
+

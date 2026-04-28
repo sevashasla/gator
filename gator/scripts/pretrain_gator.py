@@ -6,14 +6,16 @@ from typing import Literal
 import torch
 import torch.backends.cudnn as cudnn
 
+import yaml
 import tyro
 from dataclasses import dataclass
 from pathlib import Path
-
 from lightning import Trainer, seed_everything
 from lightning.pytorch.loggers import WandbLogger
 from lightning.pytorch.callbacks import ModelCheckpoint, LearningRateMonitor
 
+from gator.scripts.serialize import to_serializable
+from gator.models.gator_visualizer import GatorVisConfig
 from gator.models.model_gator import GatorConfig, Gator
 from gator.models.gator_losses import GatorLossConfig
 import gator.utils.misc as misc
@@ -29,8 +31,9 @@ class TrainingArguments:
     With num_workers=4 it already achieves around 90% GPU utilization.
     """
 
-    gator_loss_config: GatorLossConfig  
+    loss_config: GatorLossConfig  
     gator_config: GatorConfig
+    visualizer_config: GatorVisConfig
     
     # dataset 
     dataset: str = 'habitat_release_shards'
@@ -87,6 +90,10 @@ def main(args: TrainingArguments):
     ckpt_dir.mkdir(exist_ok=True, parents=True)
     latest_ckpt_path = ckpt_dir / "last.ckpt"
     latest_ckpt_path = latest_ckpt_path if latest_ckpt_path.exists() else None
+
+    save_config_path = args.output_dir / "training_config.yml"
+    with open(save_config_path, "w") as f:
+        yaml.safe_dump(to_serializable(args), f, sort_keys=False)
 
     logger.info("job dir: {}".format(os.path.dirname(os.path.realpath(__file__))))
     for k, v in vars(args).items():
@@ -157,8 +164,17 @@ def main(args: TrainingArguments):
     args.opt_params.update_lr()
    
     ## model 
-    loss_cls = args.gator_loss_config.get_loss()
+    loss_cls = args.loss_config.get_loss()
     criterion = loss_cls(
+        grid_size=(
+            args.gator_config.image_size // args.gator_config.patch_size, 
+            args.gator_config.image_size // args.gator_config.patch_size
+        ),
+        patch_size=args.gator_config.patch_size,
+    )
+
+    visualizer_cls = args.visualizer_config.get_visualizer()
+    visualizer = visualizer_cls(
         grid_size=(
             args.gator_config.image_size // args.gator_config.patch_size, 
             args.gator_config.image_size // args.gator_config.patch_size
@@ -173,6 +189,7 @@ def main(args: TrainingArguments):
         model=model, 
         loss_fn=criterion,
         optimization_config=args.opt_params,
+        visualizer=visualizer,
     )
 
     logger.info(f"Model = {str(model_wrapped)}")

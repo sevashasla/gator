@@ -115,7 +115,7 @@ class Gator(nn.Module):
         for name, value in (("_image_mean", _IMAGE_MEAN), ("_image_std", _IMAGE_STD)):
             self.register_buffer(name, torch.FloatTensor(value).view(1, 3, 1, 1), persistent=False)
 
-    def _forward_encoder(self, img: torch.Tensor, shuffle: bool, shuffle_ratio: float | None = None) -> torch.Tensor:
+    def _forward_encoder(self, img: torch.Tensor, shuffle: bool, shuffle_ratio: float | None = None) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor | None]:
         x, pos = self._patch_embed(img) # (B, N, D), (B, N, 2)
         B, N, D = x.shape
         ground_truth_pos: torch.Tensor | None = None

@@ -14,9 +14,9 @@ cd /home/skorokho/coding/gator/
 source .venv/bin/activate
 module load gcc cudnn
 
-python3 gator/scripts/pretrain_gator.py \
-    --exp-name $1 \
-    --opt_params.batch_size 128 \
-    --num-workers 16 \
-    --opt-params.max-epoch 50 \
-    --opt-params.blr 6e-4
+# python3 gator/scripts/pretrain_gator.py \
+#     --exp-name $1 \
+#     --gator-loss-config.name visual \
+#     --gator-visualizer-config.name visual
+
+python3 gator/scripts/pretrain_gator.py "$@"
