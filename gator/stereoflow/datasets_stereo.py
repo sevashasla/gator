@@ -37,6 +37,9 @@ dataset_to_root = {
     # 'Kitti12': './data/stereoflow/kitti-stereo-2012/',
     
     'ETH3DLowRes': '/scratch/izar/porpigli/eth3d_lowres/',
+    'Kitti12': '/scratch/izar/porpigli/kitti-stereo-2012/',
+    'Kitti15': '/scratch/izar/porpigli/kitti-stereo-2015/',
+    'Booster': '/scratch/izar/porpigli/booster_gt/',
 }
 cache_dir = "/scratch/izar/porpigli/datasets_stereo_cache/"
 

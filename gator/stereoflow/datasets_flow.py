@@ -28,6 +28,7 @@ dataset_to_root.update(**{
     # 'MPISintel': './data/stereoflow//MPI-Sintel/'+'/',
     
     'FlyingChairs': '/scratch/izar/porpigli/FlyingChairs_release/',
+    'MPISintel': '/scratch/izar/porpigli/MPI-Sintel/',
 })
 cache_dir = "/scratch/izar/porpigli/datasets_flow_cache/"
 

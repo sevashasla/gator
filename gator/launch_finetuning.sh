@@ -1,9 +1,9 @@
 #!/bin/bash
 #SBATCH --job-name=croco_ft
-#SBATCH --time=48:00:00
+#SBATCH --time=24:00:00
 #SBATCH --account=cs-503
 #SBATCH --qos=cs-503
-#SBATCH --gres=gpu:1
+#SBATCH --gres=gpu:2
 #SBATCH --mem=128G
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=8
@@ -22,15 +22,21 @@ mkdir -p logs
 # -----------------------------------------------------------------------------
 # User-configurable paths / hyperparameters
 # -----------------------------------------------------------------------------
-TASK="stereo"                                   # "stereo" or "flow"
-NUM_GPUS=1                                      # must match --gres=gpu:N above
+TASK="flow"                                   # "stereo" or "flow"
+NUM_GPUS=2                                      # must match --gres=gpu:N above
+CRITERION="LaplacianLossBounded2()"
 
 OUTPUT_DIR="./checkpoints/${SLURM_JOB_NAME}_${SLURM_JOB_ID}"
 PRETRAINED="./pretrained_models/CroCo_V2_ViTLarge_BaseDecoder.pth"
-DATASET="ETH3DLowRes(split='train')"
-VAL_DATASET="ETH3DLowRes(split='subval')"
+# STEREO
+# DATASET="Kitti12('train')ETH3DLowRes(split='train')"
+# VAL_DATASET="ETH3DLowRes(split='subval')"
 
-BATCH_SIZE=1
+# FLOW
+DATASET="40*MPISintel('subtrain_cleanpass')+40*MPISintel('subtrain_finalpass')"
+VAL_DATASET="MPISintel('subval_cleanpass')+MPISintel('subval_finalpass')"
+
+BATCH_SIZE=8
 EPOCHS=32
 NUM_WORKERS=8
 ACCUM_ITER=1
@@ -69,6 +75,7 @@ echo "OUTPUT_DIR=${OUTPUT_DIR}"
 # Launch — torchrun spawns one worker per GPU on this node
 # -----------------------------------------------------------------------------
 torchrun --standalone --nproc_per_node=${NUM_GPUS} stereoflow/train.py "${TASK}" \
+    --criterion "${CRITERION}" \
     --output_dir  "${OUTPUT_DIR}" \
     --pretrained  "${PRETRAINED}" \
     --dataset     "${DATASET}" \
