@@ -12,15 +12,17 @@ from pathlib import Path
 
 from lightning import Trainer, seed_everything
 from lightning.pytorch.loggers import WandbLogger
-from lightning.pytorch.callbacks import ModelCheckpoint
+from lightning.pytorch.callbacks import ModelCheckpoint, LearningRateMonitor
+import yaml
 
 from gator.models.criterion import MaskedMSE
 from gator.models.croco import CroCoNet
+from gator.scripts.serialize import to_serializable
 import gator.utils.misc as misc
 from gator import logger
 from gator.models.croco_wrapper import CroCoWrapper, OptimizationParameters
 import webdataset as wds
-from gator.datasets.shard.transforms import get_pair_transforms
+from gator.datasets.shard.transforms import get_pair_transforms_gator
 
 @dataclass(kw_only=True)
 class TrainingArguments:
@@ -43,17 +45,8 @@ class TrainingArguments:
     # training 
     seed: int = 0
     """Random seed"""
-    batch_size: int = 64
-    """Batch size per GPU (effective batch size is batch_size * accum_iter * # gpus"""
-    epochs: int = 800
-    """Maximum number of epochs for the scheduler"""
-    max_epoch: int = 400
-    """Stop training at this epoch"""
-    
-    """
-    Accumulate gradient iterations (for increasing the effective batch size
-    under memory constraints)
-    """
+
+    model_configuration: str = "CroCoNet()"
 
     opt_params: OptimizationParameters
 
@@ -99,6 +92,10 @@ def main(args: TrainingArguments):
     latest_ckpt_path = ckpt_dir / "last.ckpt"
     latest_ckpt_path = latest_ckpt_path if latest_ckpt_path.exists() else None
 
+    save_config_path = args.output_dir / "training_config.yml"
+    with open(save_config_path, "w") as f:
+        yaml.safe_dump(to_serializable(args), f, sort_keys=False)
+
     logger.info("job dir: {}".format(os.path.dirname(os.path.realpath(__file__))))
     for k, v in vars(args).items():
         logger.info(f"{k}: {v}")
@@ -112,7 +109,7 @@ def main(args: TrainingArguments):
 
     cudnn.benchmark = True
 
-    transform = get_pair_transforms(args.transforms, totensor=True, normalize=True)
+    transform = get_pair_transforms_gator(args.transforms, normalize=True)
 
     ## training dataset and loader 
     logger.info('Building dataset for {:s} with transforms {:s}'.format(args.dataset, args.transforms))
@@ -132,28 +129,58 @@ def main(args: TrainingArguments):
     #     drop_last=True,
     # )
 
-    dataset = wds.WebDataset(
-        urls=str(args.data_dir / args.dataset / "train-{000000..000180}.tar"),
+    all_shards = list((args.data_dir / args.dataset).glob("train-*.tar"))
+    all_shards = sorted(all_shards)
+
+    rng = np.random.default_rng(0)
+    rng.shuffle(all_shards)
+
+    n_eval = int(args.opt_params.tt_split_ratio * len(all_shards))
+    eval_shards = all_shards[:n_eval]
+    train_shards = all_shards[n_eval:]
+
+    logger.info(f"Training ({len(train_shards)} shards): {[s.name for s in train_shards]}")
+    logger.info(f"Evaluation ({len(eval_shards)} shards): {[s.name for s in eval_shards]}")
+
+    train_dataset = wds.WebDataset(
+        urls=[str(el) for el in train_shards],
         shardshuffle=True,
     )\
         .shuffle(512)\
-        .decode("pil")\
+        .decode("torchrgb8")\
         .rename(im1="im1.jpg", im2="im2.jpg")\
         .to_tuple("im1", "im2")\
         .map(lambda x: transform(x[0], x[1]))\
-        .batched(args.batch_size, partial=False)
+        .batched(args.opt_params.batch_size, partial=False)
+    
+    eval_dataset = wds.WebDataset(
+        urls=[str(el) for el in eval_shards],
+        shardshuffle=False,
+    )\
+        .decode("torchrgb8")\
+        .rename(im1="im1.jpg", im2="im2.jpg")\
+        .to_tuple("im1", "im2")\
+        .map(lambda x: transform(x[0], x[1]))\
+        .batched(args.opt_params.batch_size, partial=False)
+
 
     data_loader_train = torch.utils.data.DataLoader(
-        dataset,
+        train_dataset,
         num_workers=args.num_workers,
         batch_size=None,
     )
 
+    data_loader_eval = torch.utils.data.DataLoader(
+        eval_dataset,
+        num_workers=min(args.num_workers, len(eval_shards)),
+        batch_size=None,
+    )
+
     # learning rates
-    args.opt_params.update_lr(args.batch_size)
+    args.opt_params.update_lr()
    
     ## model 
-    model = CroCoNet()
+    model: CroCoNet = eval(args.model_configuration)
     model.to(device)
 
     logger.info(f'Loading criterion: MaskedMSE(norm_pix_loss={str(bool(args.norm_pix_loss))})')
@@ -162,11 +189,11 @@ def main(args: TrainingArguments):
     model_wrapped = CroCoWrapper(
         model=model, 
         loss_fn=criterion,
-        optimization_params=args.opt_params,
+        optimization_config=args.opt_params,
     )
 
     logger.info(f"Model = {str(model_wrapped)}")
-    logger.info(f"Start training until {args.max_epoch} epochs")
+    logger.info(f"Start training until {args.opt_params.max_epoch} epochs")
     
     wandb_logger = WandbLogger(
         save_dir=args.output_dir,
@@ -178,16 +205,22 @@ def main(args: TrainingArguments):
         dirpath=ckpt_dir,
         save_last=True,
         monitor="epoch",
+        mode="max",
         save_top_k=3,
         every_n_epochs=1,
         enable_version_counter=False,
         save_on_exception=True,
     )
 
+    learning_rate_logger = LearningRateMonitor(
+        logging_interval='step',
+        log_momentum=False,
+    )
+
     # trainer = Trainer(
     #     logger=wandb_logger,
     #     precision=args.precision,
-    #     max_epochs=args.max_epoch,
+    #     max_epochs=args.opt_params.max_epoch,
     #     accelerator="gpu",
     #     strategy="ddp",
     #     devices=args.world_size,
@@ -198,14 +231,15 @@ def main(args: TrainingArguments):
     trainer = Trainer(
         logger=wandb_logger,
         precision=args.precision,
-        max_epochs=args.max_epoch,
+        max_epochs=args.opt_params.max_epoch,
         accelerator="gpu",
-        callbacks=[model_checkpoint_callback],
+        callbacks=[model_checkpoint_callback, learning_rate_logger],
     )
 
     trainer.fit(
         model=model_wrapped, 
         train_dataloaders=data_loader_train,
+        val_dataloaders=data_loader_eval,
         ckpt_path=latest_ckpt_path,
     )
 

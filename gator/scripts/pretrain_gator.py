@@ -6,32 +6,37 @@ from typing import Literal
 import torch
 import torch.backends.cudnn as cudnn
 
+import yaml
 import tyro
 from dataclasses import dataclass
 from pathlib import Path
-
 from lightning import Trainer, seed_everything
 from lightning.pytorch.loggers import WandbLogger
-from lightning.pytorch.callbacks import ModelCheckpoint
+from lightning.pytorch.callbacks import ModelCheckpoint, LearningRateMonitor
 
-from gator.models.criterion import MaskedMSE
-from gator.models.croco import CroCoNet
+from gator.scripts.serialize import to_serializable
+from gator.models.gator_visualizer import GatorVisConfig
+from gator.models.model_gator import GatorConfig, Gator
+from gator.models.gator_losses import GatorLossConfig
 import gator.utils.misc as misc
-from gator.datasets.pairs_dataset import PairsDataset
 from gator import logger
-from gator.models.croco_wrapper import CroCoWrapper, OptimizationParameters
+from gator.models.gator_wrapper import GatorWrapper, OptimizationParameters
+import webdataset as wds
+from gator.datasets.shard.transforms import get_pair_transforms_gator
 
 @dataclass(kw_only=True)
 class TrainingArguments:
     """
     On the cluster each node has two V100 32GB GPUs.
+    With num_workers=4 it already achieves around 90% GPU utilization.
     """
-    norm_pix_loss: Literal[0, 1] = 1
-    """apply per-patch mean/std normalization before applying the loss"""
-    
+
+    loss_config: GatorLossConfig  
+    gator_config: GatorConfig
+    visualizer_config: GatorVisConfig
     
     # dataset 
-    dataset: str = 'habitat_release'
+    dataset: str = 'habitat_release_shards'
     """training set"""
     transforms: str = 'crop224+acolor'
     """
@@ -41,11 +46,6 @@ class TrainingArguments:
     # training 
     seed: int = 0
     """Random seed"""
-    
-    """
-    Accumulate gradient iterations (for increasing the effective batch size
-    under memory constraints)
-    """
 
     opt_params: OptimizationParameters
 
@@ -91,6 +91,10 @@ def main(args: TrainingArguments):
     latest_ckpt_path = ckpt_dir / "last.ckpt"
     latest_ckpt_path = latest_ckpt_path if latest_ckpt_path.exists() else None
 
+    save_config_path = args.output_dir / "training_config.yml"
+    with open(save_config_path, "w") as f:
+        yaml.safe_dump(to_serializable(args), f, sort_keys=False)
+
     logger.info("job dir: {}".format(os.path.dirname(os.path.realpath(__file__))))
     for k, v in vars(args).items():
         logger.info(f"{k}: {v}")
@@ -104,41 +108,93 @@ def main(args: TrainingArguments):
 
     cudnn.benchmark = True
 
+    # normalization is done in the gator model itself
+    transform = get_pair_transforms_gator(args.transforms, normalize=False)
+
     ## training dataset and loader 
     logger.info('Building dataset for {:s} with transforms {:s}'.format(args.dataset, args.transforms))
-    dataset = PairsDataset(args.dataset, trfs=args.transforms, data_dir=args.data_dir)
-    if world_size > 1:
-        sampler_train = torch.utils.data.DistributedSampler(
-            dataset, num_replicas=world_size, rank=global_rank, shuffle=True
-        )
-        logger.info(f"Sampler_train = {str(sampler_train)}")
-    else:
-        sampler_train = torch.utils.data.RandomSampler(dataset)
+
+    all_shards = list((args.data_dir / args.dataset).glob("train-*.tar"))
+    all_shards = sorted(all_shards)
+
+    rng = np.random.default_rng(0)
+    rng.shuffle(all_shards)
+
+    n_eval = int(args.opt_params.tt_split_ratio * len(all_shards))
+    eval_shards = all_shards[:n_eval]
+    train_shards = all_shards[n_eval:]
+
+    logger.info(f"Training ({len(train_shards)} shards): {[s.name for s in train_shards]}")
+    logger.info(f"Evaluation ({len(eval_shards)} shards): {[s.name for s in eval_shards]}")
+
+    train_dataset = wds.WebDataset(
+        urls=[str(el) for el in train_shards],
+        shardshuffle=True,
+    )\
+        .shuffle(512)\
+        .decode("torchrgb8")\
+        .rename(im1="im1.jpg", im2="im2.jpg")\
+        .to_tuple("im1", "im2")\
+        .map(lambda x: transform(x[0], x[1]))\
+        .batched(args.opt_params.batch_size, partial=False)
+    
+    eval_dataset = wds.WebDataset(
+        urls=[str(el) for el in eval_shards],
+        shardshuffle=False,
+    )\
+        .decode("torchrgb8")\
+        .rename(im1="im1.jpg", im2="im2.jpg")\
+        .to_tuple("im1", "im2")\
+        .map(lambda x: transform(x[0], x[1]))\
+        .batched(args.opt_params.batch_size, partial=False)
+
+
     data_loader_train = torch.utils.data.DataLoader(
-        dataset, sampler=sampler_train,
-        batch_size=args.batch_size,
+        train_dataset,
         num_workers=args.num_workers,
-        pin_memory=True,
-        drop_last=True,
+        batch_size=None,
     )
+
+    data_loader_eval = torch.utils.data.DataLoader(
+        eval_dataset,
+        num_workers=min(args.num_workers, len(eval_shards)),
+        batch_size=None,
+    )
+
     # learning rates
-    args.opt_params.update_lr(args.batch_size)
+    args.opt_params.update_lr()
    
     ## model 
-    model = CroCoNet()
-    model.to(device)
+    loss_cls = args.loss_config.get_loss()
+    criterion = loss_cls(
+        grid_size=(
+            args.gator_config.image_size // args.gator_config.patch_size, 
+            args.gator_config.image_size // args.gator_config.patch_size
+        ),
+        patch_size=args.gator_config.patch_size,
+    )
 
-    logger.info(f'Loading criterion: MaskedMSE(norm_pix_loss={str(bool(args.norm_pix_loss))})')
-    criterion = MaskedMSE(norm_pix_loss=bool(args.norm_pix_loss))
+    visualizer_cls = args.visualizer_config.get_visualizer()
+    visualizer = visualizer_cls(
+        grid_size=(
+            args.gator_config.image_size // args.gator_config.patch_size, 
+            args.gator_config.image_size // args.gator_config.patch_size
+        ),
+        patch_size=args.gator_config.patch_size,
+    )
+
+    model = Gator(args.gator_config)
+    model.to(device)
     
-    model_wrapped = CroCoWrapper(
+    model_wrapped = GatorWrapper(
         model=model, 
         loss_fn=criterion,
         optimization_config=args.opt_params,
+        visualizer=visualizer,
     )
 
     logger.info(f"Model = {str(model_wrapped)}")
-    logger.info(f"Start training until {args.max_epoch} epochs")
+    logger.info(f"Start training until {args.opt_params.max_epoch} epochs")
     
     wandb_logger = WandbLogger(
         save_dir=args.output_dir,
@@ -150,10 +206,16 @@ def main(args: TrainingArguments):
         dirpath=ckpt_dir,
         save_last=True,
         monitor="epoch",
+        mode="max",
         save_top_k=3,
         every_n_epochs=1,
         enable_version_counter=False,
         save_on_exception=True,
+    )
+
+    learning_rate_logger = LearningRateMonitor(
+        logging_interval='step',
+        log_momentum=False,
     )
 
     # trainer = Trainer(
@@ -170,14 +232,15 @@ def main(args: TrainingArguments):
     trainer = Trainer(
         logger=wandb_logger,
         precision=args.precision,
-        max_epochs=args.max_epoch,
+        max_epochs=args.opt_params.max_epoch,
         accelerator="gpu",
-        callbacks=[model_checkpoint_callback],
+        callbacks=[model_checkpoint_callback, learning_rate_logger],
     )
 
     trainer.fit(
         model=model_wrapped, 
         train_dataloaders=data_loader_train,
+        val_dataloaders=data_loader_eval,
         ckpt_path=latest_ckpt_path,
     )
 
