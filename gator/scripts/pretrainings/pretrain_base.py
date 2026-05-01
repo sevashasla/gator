@@ -5,34 +5,28 @@ from typing import Literal
 
 import torch
 import torch.backends.cudnn as cudnn
+from abc import abstractmethod
 
+import yaml
 import tyro
 from dataclasses import dataclass
 from pathlib import Path
-
 from lightning import Trainer, seed_everything
+import lightning as L
 from lightning.pytorch.loggers import WandbLogger
 from lightning.pytorch.callbacks import ModelCheckpoint, LearningRateMonitor
-import yaml
 
-from gator.models.criterion import MaskedMSE
-from gator.models.croco import CroCoNet
 from gator.scripts.serialize import to_serializable
 import gator.utils.misc as misc
 from gator import logger
-from gator.models.croco_wrapper import CroCoWrapper, OptimizationParameters
-import webdataset as wds
-from gator.datasets.shard.transforms import get_pair_transforms_gator
+
 
 @dataclass(kw_only=True)
-class TrainingArguments:
+class TrainingArgumentsBase:
     """
     On the cluster each node has two V100 32GB GPUs.
     With num_workers=4 it already achieves around 90% GPU utilization.
     """
-    norm_pix_loss: Literal[0, 1] = 1
-    """apply per-patch mean/std normalization before applying the loss"""
-    
     
     # dataset 
     dataset: str = 'habitat_release_shards'
@@ -45,10 +39,6 @@ class TrainingArguments:
     # training 
     seed: int = 0
     """Random seed"""
-
-    model_configuration: str = "CroCoNet()"
-
-    opt_params: OptimizationParameters
 
     precision: Literal['16', '32', 'bf16-mixed', '16-mixed'] = '16-mixed'
     """Use Automatic Mixed Precision for pretraining"""
@@ -77,8 +67,20 @@ class TrainingArguments:
             self.exp_name = f"{self.exp_name}-{idx:03}"
         self.output_dir = self.output_dir / self.exp_name
 
+    @abstractmethod
+    def get_dataloaders(self) -> tuple[torch.utils.data.DataLoader, torch.utils.data.DataLoader]:
+        raise NotImplementedError("`get_dataloaders` method should be implemented by subclasses")
         
-def main(args: TrainingArguments):
+    @abstractmethod
+    def get_wrapper(self) -> L.LightningModule:
+        raise NotImplementedError("`get_wrapper` method should be implemented by subclasses")
+    
+    @abstractmethod
+    def get_max_epochs(self) -> int:
+        raise NotImplementedError("`get_max_epochs` method should be implemented by subclasses")
+
+        
+def pretrain_model(args: TrainingArgumentsBase):
     misc.init_distributed_mode(args)
     global_rank = misc.get_rank()
     world_size = misc.get_world_size()
@@ -109,91 +111,12 @@ def main(args: TrainingArguments):
 
     cudnn.benchmark = True
 
-    transform = get_pair_transforms_gator(args.transforms, normalize=True)
-
-    ## training dataset and loader 
-    logger.info('Building dataset for {:s} with transforms {:s}'.format(args.dataset, args.transforms))
-    # dataset = PairsDataset(args.dataset, trfs=args.transforms, data_dir=args.data_dir)
-    # if world_size > 1:
-    #     sampler_train = torch.utils.data.DistributedSampler(
-    #         dataset, num_replicas=world_size, rank=global_rank, shuffle=True
-    #     )
-    #     logger.info(f"Sampler_train = {str(sampler_train)}")
-    # else:
-    #     sampler_train = torch.utils.data.RandomSampler(dataset)
-    # data_loader_train = torch.utils.data.DataLoader(
-    #     dataset, sampler=sampler_train,
-    #     batch_size=args.batch_size,
-    #     num_workers=args.num_workers,
-    #     pin_memory=True,
-    #     drop_last=True,
-    # )
-
-    all_shards = list((args.data_dir / args.dataset).glob("train-*.tar"))
-    all_shards = sorted(all_shards)
-
-    rng = np.random.default_rng(0)
-    rng.shuffle(all_shards)
-
-    n_eval = int(args.opt_params.tt_split_ratio * len(all_shards))
-    eval_shards = all_shards[:n_eval]
-    train_shards = all_shards[n_eval:]
-
-    logger.info(f"Training ({len(train_shards)} shards): {[s.name for s in train_shards]}")
-    logger.info(f"Evaluation ({len(eval_shards)} shards): {[s.name for s in eval_shards]}")
-
-    train_dataset = wds.WebDataset(
-        urls=[str(el) for el in train_shards],
-        shardshuffle=True,
-    )\
-        .shuffle(512)\
-        .decode("torchrgb8")\
-        .rename(im1="im1.jpg", im2="im2.jpg")\
-        .to_tuple("im1", "im2")\
-        .map(lambda x: transform(x[0], x[1]))\
-        .batched(args.opt_params.batch_size, partial=False)
-    
-    eval_dataset = wds.WebDataset(
-        urls=[str(el) for el in eval_shards],
-        shardshuffle=False,
-    )\
-        .decode("torchrgb8")\
-        .rename(im1="im1.jpg", im2="im2.jpg")\
-        .to_tuple("im1", "im2")\
-        .map(lambda x: transform(x[0], x[1]))\
-        .batched(args.opt_params.batch_size, partial=False)
-
-
-    data_loader_train = torch.utils.data.DataLoader(
-        train_dataset,
-        num_workers=args.num_workers,
-        batch_size=None,
-    )
-
-    data_loader_eval = torch.utils.data.DataLoader(
-        eval_dataset,
-        num_workers=min(args.num_workers, len(eval_shards)),
-        batch_size=None,
-    )
-
-    # learning rates
-    args.opt_params.update_lr()
-   
-    ## model 
-    model: CroCoNet = eval(args.model_configuration)
-    model.to(device)
-
-    logger.info(f'Loading criterion: MaskedMSE(norm_pix_loss={str(bool(args.norm_pix_loss))})')
-    criterion = MaskedMSE(norm_pix_loss=bool(args.norm_pix_loss))
-    
-    model_wrapped = CroCoWrapper(
-        model=model, 
-        loss_fn=criterion,
-        optimization_config=args.opt_params,
-    )
+    data_loader_train, data_loader_eval = args.get_dataloaders()
+    model_wrapped = args.get_wrapper()
+    max_epochs = args.get_max_epochs()
 
     logger.info(f"Model = {str(model_wrapped)}")
-    logger.info(f"Start training until {args.opt_params.max_epoch} epochs")
+    logger.info(f"Start training until {max_epochs} epochs")
     
     wandb_logger = WandbLogger(
         save_dir=args.output_dir,
@@ -220,7 +143,7 @@ def main(args: TrainingArguments):
     # trainer = Trainer(
     #     logger=wandb_logger,
     #     precision=args.precision,
-    #     max_epochs=args.opt_params.max_epoch,
+    #     max_epochs=max_epochs,
     #     accelerator="gpu",
     #     strategy="ddp",
     #     devices=args.world_size,
@@ -231,7 +154,7 @@ def main(args: TrainingArguments):
     trainer = Trainer(
         logger=wandb_logger,
         precision=args.precision,
-        max_epochs=args.opt_params.max_epoch,
+        max_epochs=max_epochs,
         accelerator="gpu",
         callbacks=[model_checkpoint_callback, learning_rate_logger],
     )
@@ -242,7 +165,3 @@ def main(args: TrainingArguments):
         val_dataloaders=data_loader_eval,
         ckpt_path=latest_ckpt_path,
     )
-
-if __name__ == '__main__':
-    args = tyro.cli(TrainingArguments)
-    main(args)

@@ -2,15 +2,16 @@ import torch
 import torch.nn.functional as F
 import torch.nn as nn
 
-from gator.models.blocks import PatchEmbed, Block, DecoderBlock
-from gator.models.pos_embed import get_2d_sincos_pos_embed, RoPE2D
+from gator.models.blocks import PatchEmbed, Block
+from gator.models.pos_embed import RoPE2D
 
 
 from dataclasses import dataclass
+
 @dataclass
-class GatorConfig:
+class Jigsaw1ViewConfig:
     """
-    config for Gator model
+    config for 1-View Gator Model
     """
 
     num_register_tokens: int = 4
@@ -27,9 +28,6 @@ class GatorConfig:
     enc_depth: int = 12
     enc_num_heads: int = 3
 
-    dec_emb_dim: int = 192
-    dec_depth: int = 8
-    dec_num_heads: int = 3
     mlp_ratio: float = 4.0
 
     fused_attn: bool = True
@@ -41,8 +39,8 @@ class GatorConfig:
 _IMAGE_MEAN = [0.485, 0.456, 0.406]
 _IMAGE_STD = [0.229, 0.224, 0.225]
 
-class Gator(nn.Module):
-    def __init__(self, config: GatorConfig) -> None:
+class Jigsaw1View(nn.Module):
+    def __init__(self, config: Jigsaw1ViewConfig) -> None:
         super().__init__()
 
         self._config = config
@@ -62,14 +60,6 @@ class Gator(nn.Module):
             norm_layer=None,
             flatten=True,
         )
-
-        # positional embedding of the decoder  
-        dec_pos_embed = get_2d_sincos_pos_embed(
-            self._config.dec_emb_dim, 
-            self._patch_embed.grid_size, 
-            n_cls_token=self._config.num_register_tokens,
-        )
-        self.register_buffer('_dec_pos_embed', torch.from_numpy(dec_pos_embed).float())
         
         # relative positional embedding for encoder
         if RoPE2D is None: 
@@ -88,28 +78,14 @@ class Gator(nn.Module):
             ) for _ in range(self._config.enc_depth)
         ])
         self._enc_norm = nn.LayerNorm(self._config.enc_emb_dim)
-        self._decoder_embed = nn.Linear(self._config.enc_emb_dim, self._config.dec_emb_dim)
 
-        self._decoder_blocks = nn.ModuleList([
-            DecoderBlock(
-                dim=self._config.dec_emb_dim,
-                num_heads=self._config.dec_num_heads,
-                mlp_ratio=self._config.mlp_ratio,
-                qkv_bias=True,
-                norm_layer=nn.LayerNorm,
-                rope=None,
-                fused_attn=self._config.fused_attn,
-            ) for _ in range(self._config.dec_depth)
-        ])
-
-        self._decoder_norm = nn.LayerNorm(self._config.dec_emb_dim)
         if self._config.predict_position:
-            self._decoder_pred = nn.Sequential(
+            self._final_layer = nn.Sequential(
                 nn.Linear(self._config.dec_emb_dim, 2),
                 nn.Tanh(),
             )
         else:
-            self._decoder_pred = nn.Linear(self._config.dec_emb_dim, self._patch_embed.num_patches)
+            self._final_layer = nn.Linear(self._config.dec_emb_dim, self._patch_embed.num_patches)
 
         # register normalization
         for name, value in (("_image_mean", _IMAGE_MEAN), ("_image_std", _IMAGE_STD)):
@@ -140,7 +116,7 @@ class Gator(nn.Module):
             x = x + self._no_pos_emb # add a learnable no_pos_emb to the input tokens
             ground_truth_pos = pos[mask].view(B, N1, 2) # (B, N1, 2)
             # dummy pos for the encoder to behave like shuffling
-            pos = torch.zeros_like(pos)
+            pos = torch.zeros_like(pos[mask]).view(B, N1, 2)
 
         register_tokens = self._register_tokens.expand(B, -1, -1) # (B, num_register_tokens, D)
         x = torch.cat([register_tokens, x], dim=1)
@@ -157,52 +133,45 @@ class Gator(nn.Module):
 
         return x, pos, ground_truth_pos
 
-    def _forward_decoder(
+
+    def forward(
             self, 
-            x: torch.Tensor, 
-            context: torch.Tensor,
-        ) -> torch.Tensor:
+            img1: torch.Tensor, 
+            img2: torch.Tensor | None, 
+            shuffle_ratio: float | None = None
+        ):
         """
-        x: (B, N1, C)
-        context: (B, N2, C)
-        N2 >= N1
-        """
-        context = context + self._dec_pos_embed[None, ...]
+        We would like to keep the same interfact for both 1-view and 2-view
+        models, so we keep img2 as an optional input. When img2 is provided we
+        simply concatenate them in a bigger batch.
 
-        for block in self._decoder_blocks:
-            x, context = block(x, context, xpos=None, ypos=None, use_sa_rope=False, use_ca_rope=False)
-        x = self._decoder_norm(x)
-        return x
+        - img1: (B, C, H, W), not normalized 
+        - img2: (B, C, H, W) or None, not normalized
 
-    def forward(self, img1: torch.Tensor, img2: torch.Tensor, shuffle_ratio: float | None = None):
-        """
-        img1: (B, C, H, W), not normalized
-        img2: (B, C, H, W), not normalized
-
-        1. use RoPE in encoder for img2
-        2. do not use RoPE for encoder in img1
+        
+        1. do not use RoPE for encoder in img1
 
         3. use absolute positional embedding for img2 in decoder
         4. do not use absolute positional embedding for img1 in decoder
 
         :returns:
-        out: (B, N1, num_patches), the predicted positions
-        img1_gt_pos: (B, num_reg_tokens+N1, 2), the ground truth positions of the shuffled tokens in img1
-        num_register_tokens: int, the number of register tokens used
+        out: (B_, N1, num_patches), the predicted positions img1_gt_pos: (B,
+        num_reg_tokens+N1, 2), the ground truth positions of the shuffled tokens
+        in img1 num_register_tokens: int, the number of register tokens used
 
-        **important** When calculating the loss do not forget to remove the register tokens
+        **important** When calculating the loss do not forget to remove the
+        register tokens
         """
 
-        img1 = (img1 - self._image_mean) / self._image_std
-        img2 = (img2 - self._image_mean) / self._image_std
+        img = img1 if img2 is None else torch.cat([img1, img2], dim=0)
+        img = (img - self._image_mean) / self._image_std
 
-        img1_enc, img1_pos, img1_gt_pos = self._forward_encoder(img1, shuffle=True, shuffle_ratio=shuffle_ratio)
-        img2_enc, img2_pos, _ = self._forward_encoder(img2, shuffle=False)
+        img_enc, _, img_gt_pos = self._forward_encoder(
+            img, 
+            shuffle=True, 
+            shuffle_ratio=shuffle_ratio
+        )
 
-        img1_to_dec = self._decoder_embed(img1_enc)
-        img2_to_dec = self._decoder_embed(img2_enc)
-
-        out_dec = self._forward_decoder(img1_to_dec, img2_to_dec)
-        out = self._decoder_pred(out_dec)
-        return out, img1_gt_pos, self._config.num_register_tokens
+        out = self._final_layer(img_enc)
+        return out, img_gt_pos, self._config.num_register_tokens
 

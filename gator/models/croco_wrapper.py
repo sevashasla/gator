@@ -1,5 +1,3 @@
-from dataclasses import dataclass
-
 import lightning as L
 import torch
 from gator.models.criterion import MaskedMSE
@@ -7,65 +5,7 @@ from gator.models.croco import CroCoNet
 from gator.utils import misc
 from gator import logger
 import torchvision.transforms.v2.functional as TF
-
-@dataclass
-class OptimizationParameters:
-    weight_decay: float = 0.05
-    """weight decay (default: 0.05)"""
-    lr: float = None
-    """learning rate (absolute lr)"""
-    blr: float = 1.5e-4
-    """base learning rate: absolute_lr = base_lr * total_batch_size / 256"""
-    min_lr: float = 0.
-    """lower lr bound for cyclic schedulers that hit 0"""
-    warmup_epochs: int = 40
-    """epochs to warmup LR"""
-    accum_iter: int = 1
-    """
-    Accumulate gradient iterations (for increasing the effective batch size
-    under memory constraints)
-    """
-    batch_size: int = 64
-    """Batch size per GPU (effective batch size is batch_size * accum_iter * # gpus"""
-    epochs: int = 800
-    """Maximum number of epochs for the scheduler"""
-    max_epoch: int = 400
-    """Stop training at this epoch"""
-
-    dataset_size: int = 181*10000
-    """
-    number of shards * shard_size
-    """
-
-    tt_split_ratio: float = 0.03
-    """
-    train-test split ratio for the dataset (used to determine number of steps
-    per epoch)
-    """
-
-    steps_per_epoch: int | None = None
-
-    def __post_init__(self):
-        self.update_lr()
-        self.update_steps_per_epoch()
-
-    def update_lr(self):
-        eff_batch_size = self.batch_size * self.accum_iter * misc.get_world_size()
-        if self.lr is None:  # only base_lr is specified
-            self.lr = self.blr * eff_batch_size / 256
-        
-        logger.info("Updated LR")
-        logger.info(f"base lr: {self.lr * 256 / eff_batch_size:.2e}")
-        logger.info(f"actual lr: {self.lr:.2e}")
-        logger.info(f"accumulate grad iterations: {self.accum_iter}")
-        logger.info(f"effective batch size: {eff_batch_size}")
-
-    def update_steps_per_epoch(self):
-        if self.steps_per_epoch is None:
-            self.steps_per_epoch = int(self.dataset_size * (1 - self.tt_split_ratio)) // \
-                (self.batch_size * misc.get_world_size())
-        
-        logger.info(f"Updated steps per epoch: {self.steps_per_epoch}")
+from gator.models.jigsaw_1view.jigsaw_wrapper import OptimizationParameters
 
 
 class CroCoWrapper(L.LightningModule):
