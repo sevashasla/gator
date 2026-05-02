@@ -10,10 +10,13 @@
 #SBATCH --output=logs/%x_%j.out
 #SBATCH --error=logs/%x_%j.err
 
-# Finetune CroCo on stereo or flow via torchrun on a single multi-GPU node.
+# Finetune CroCo or Gator on stereo or flow via torchrun on a single multi-GPU node.
 #
 # Usage:
 #   sbatch submit_train.sh
+#
+# Set MODEL="croco" to finetune a CroCo checkpoint (.pth)
+# Set MODEL="gator"  to finetune a Gator Lightning checkpoint (.ckpt)
 
 set -euo pipefail
 cd "${SLURM_SUBMIT_DIR:-.}"
@@ -22,12 +25,18 @@ mkdir -p logs
 # -----------------------------------------------------------------------------
 # User-configurable paths / hyperparameters
 # -----------------------------------------------------------------------------
-TASK="flow"                                   # "stereo" or "flow"
+MODEL="croco"                                   # "croco" or "gator"
+TASK="flow"                                     # "stereo" or "flow"
 NUM_GPUS=2                                      # must match --gres=gpu:N above
 CRITERION="LaplacianLossBounded2()"
 
 OUTPUT_DIR="./checkpoints/${SLURM_JOB_NAME}_${SLURM_JOB_ID}"
+
+# CroCo pretrained checkpoint (.pth):
 PRETRAINED="./pretrained_models/CroCo_V2_ViTLarge_BaseDecoder.pth"
+# Gator pretrained checkpoint (Lightning .ckpt) — uncomment and set MODEL="gator":
+# PRETRAINED="./pretrained_models/gator/checkpoints/last.ckpt"
+
 # STEREO
 # DATASET="Kitti12('train')ETH3DLowRes(split='train')"
 # VAL_DATASET="ETH3DLowRes(split='subval')"
@@ -75,7 +84,8 @@ echo "OUTPUT_DIR=${OUTPUT_DIR}"
 # Launch — torchrun spawns one worker per GPU on this node
 # -----------------------------------------------------------------------------
 torchrun --standalone --nproc_per_node=${NUM_GPUS} stereoflow/train.py "${TASK}" \
-    --criterion "${CRITERION}" \
+    --model       "${MODEL}" \
+    --criterion   "${CRITERION}" \
     --output_dir  "${OUTPUT_DIR}" \
     --pretrained  "${PRETRAINED}" \
     --dataset     "${DATASET}" \

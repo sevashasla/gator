@@ -27,6 +27,8 @@ from gator.utils.misc import NativeScalerWithGradNormCount as NativeScaler
 from gator.models.croco_downstream import CroCoDownstreamBinocular, croco_args_from_ckpt
 from gator.models.pos_embed import interpolate_pos_embed
 from gator.models.head_downstream import PixelwiseTaskWithDPT
+from gator.models.gator_downstream import GatorDownstreamBinocular, load_gator_state_dict
+from gator.models.model_gator import GatorConfig
 
 from gator.stereoflow.datasets_stereo import get_train_dataset_stereo, get_test_datasets_stereo
 from gator.stereoflow.datasets_flow import get_train_dataset_flow, get_test_datasets_flow
@@ -44,11 +46,12 @@ def get_args_parser():
         if default is not None: assert default_stereo is None and default_flow is None, "setting default makes default_stereo and default_flow disabled"
         parser_stereo.add_argument(name_or_flags, default=default if default is not None else default_stereo, **kwargs)
         parser_flow.add_argument(name_or_flags, default=default if default is not None else default_flow, **kwargs)
-    # output dir 
+    # output dir
     add_arg('--output_dir', required=True, type=str, help='path where to save, if empty, automatically created')
     # model
+    add_arg('--model', default='croco', type=str, choices=['croco', 'gator'], help='Model backbone to finetune (croco or gator)')
     add_arg('--crop', type=int, nargs = '+', default_stereo=[352, 704], default_flow=[320, 384], help = "size of the random image crops used during training.")
-    add_arg('--pretrained', required=True, type=str, help="Load pretrained model (required as croco arguments come from there)")
+    add_arg('--pretrained', required=True, type=str, help="Path to pretrained checkpoint (CroCo .pth or Gator Lightning .ckpt)")
     # criterion  
     add_arg('--criterion', default_stereo='LaplacianLossBounded2()', default_flow='LaplacianLossBounded()', type=str, help='string to evaluate to get criterion')
     add_arg('--bestmetric', default_stereo='avgerr', default_flow='EPE', type=str)
@@ -106,21 +109,30 @@ def main(args):
     # Prepare model
     assert os.path.isfile(args.pretrained)
     ckpt = torch.load(args.pretrained, 'cpu')
-    croco_args = croco_args_from_ckpt(ckpt)
-    croco_args['img_size'] = (args.crop[0], args.crop[1])
-    print('Croco args: '+str(croco_args))
-    args.croco_args = croco_args # saved for test time 
-    # prepare head 
+    # prepare head (same for both backbones)
     num_channels = {'stereo': 1, 'flow': 2}[args.task]
     if criterion.with_conf: num_channels += 1
     print(f'Building head PixelwiseTaskWithDPT() with {num_channels} channel(s)')
     head = PixelwiseTaskWithDPT()
     head.num_channels = num_channels
     # build model and load pretrained weights
-    model = CroCoDownstreamBinocular(head, **croco_args)
-    interpolate_pos_embed(model, ckpt['model'])
-    msg = model.load_state_dict(ckpt['model'], strict=False)
-    print(msg)
+    if args.model == 'croco':
+        croco_args = croco_args_from_ckpt(ckpt)
+        croco_args['img_size'] = (args.crop[0], args.crop[1])
+        print('CroCo args: ' + str(croco_args))
+        args.croco_args = croco_args  # saved for test time
+        model = CroCoDownstreamBinocular(head, **croco_args)
+        interpolate_pos_embed(model, ckpt['model'])
+        msg = model.load_state_dict(ckpt['model'], strict=False)
+        print(msg)
+    else:  # gator
+        gator_config = GatorConfig()
+        print('Gator config: ' + str(gator_config))
+        args.gator_config = gator_config  # saved for test time
+        model = GatorDownstreamBinocular(head, gator_config, img_size=(args.crop[0], args.crop[1]))
+        gator_state_dict = load_gator_state_dict(ckpt)
+        msg = model.load_state_dict(gator_state_dict, strict=False)
+        print(msg)
 
     total_params = sum(p.numel() for p in model.parameters())
     total_params_trainable = sum(p.numel() for p in model.parameters() if p.requires_grad)
