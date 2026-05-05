@@ -108,7 +108,7 @@ def main(args):
 
     # Prepare model
     assert os.path.isfile(args.pretrained)
-    ckpt = torch.load(args.pretrained, 'cpu')
+    ckpt = torch.load(args.pretrained, map_location='cpu', weights_only=False)
     # prepare head (same for both backbones)
     num_channels = {'stereo': 1, 'flow': 2}[args.task]
     if criterion.with_conf: num_channels += 1
@@ -163,7 +163,7 @@ def main(args):
         print(f"Starting from an other model's weights: {args.start_from}")
         best_so_far = None
         args.start_epoch = 0
-        ckpt = torch.load(args.start_from, 'cpu')
+        ckpt = torch.load(args.start_from, map_location='cpu', weights_only=False)
         msg = model_without_ddp.load_state_dict(ckpt['model'], strict=False)
         print(msg)
     else:
