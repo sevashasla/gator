@@ -116,10 +116,7 @@ class MAE1ViewWrapper(Jigsaw1ViewWrapper):
     def validation_step(self, batch, batch_idx):
         batch = torch.stack(batch, dim=1) # (B, 2, C, H, W)
         
-        out, mask_taken, num_register_tokens = self.forward(
-            batch, 
-            shuffle_ratio=1.0,
-        )
+        out, mask_taken, num_register_tokens = self.forward(batch)
         batch = torch.cat([
             batch[:, 0, :, :, :], 
             batch[:, 1, :, :, :]

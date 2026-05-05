@@ -28,23 +28,24 @@ class MAEVis(GatorBaseVis):
         """
 
         B, C, H, W = gt_image.shape
+        D = self._patch_size ** 2 * C
         
-        if pred.size(-1) != self._patch_size ** 2 * C:
-            raise ValueError(f"pred.size(-1) should be {self._patch_size ** 2 * C} but got {pred.size(-1)}")
+        if pred.size(-1) != D:
+            raise ValueError(f"pred.size(-1) should be {D} but got {pred.size(-1)}")
         pred_no_reg = pred[:, num_register_tokens:, :] # (B, N, D)
         
         if gt_pos.ndim != 2 or gt_pos.size(1) != pred_no_reg.size(1):
             raise ValueError(f"gt_pos should be of shape (B, N) but got {gt_pos.shape}")
         
         result = torch.empty(
-            (B, self._grid_size[0] * self._grid_size[1], self._patch_size ** 2 * C)
+            (B, self._grid_size[0] * self._grid_size[1], D)
         ).to(pred_no_reg)
 
         num_mask = gt_pos.sum(dim=1)
         assert num_mask.min() == num_mask.max(), "All images in the batch should have the same number of masked tokens for visualization"
         num_mask = num_mask[0].item()
-        result[gt_pos] = pred_no_reg[:, :num_mask]
-        result[~gt_pos] = pred_no_reg[:, num_mask:]
+        result[gt_pos] = pred_no_reg[:, :num_mask].reshape(-1, D)
+        result[~gt_pos] = pred_no_reg[:, num_mask:].reshape(-1, D)
         result_img = self.unpatchify(result) 
         
         return result_img

@@ -81,11 +81,11 @@ class Jigsaw1View(nn.Module):
 
         if self._config.predict_position:
             self._final_layer = nn.Sequential(
-                nn.Linear(self._config.dec_emb_dim, 2),
+                nn.Linear(self._config.enc_emb_dim, 2),
                 nn.Tanh(),
             )
         else:
-            self._final_layer = nn.Linear(self._config.dec_emb_dim, self._patch_embed.num_patches)
+            self._final_layer = nn.Linear(self._config.enc_emb_dim, self._patch_embed.num_patches)
 
         # register normalization
         for name, value in (("_image_mean", _IMAGE_MEAN), ("_image_std", _IMAGE_STD)):

@@ -175,7 +175,7 @@ class Jigsaw1ViewWrapper(L.LightningModule):
         loss = self._loss_fn.forward(
             pred=out, 
             gt_pos=gt_pos, 
-            gt_image=batch[:, 0, :, :, :],
+            gt_image=batch,
             num_register_tokens=num_register_tokens,
         )
         self.log("train_loss", loss, sync_dist=True)
