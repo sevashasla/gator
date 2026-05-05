@@ -48,8 +48,8 @@ class ColorJitterPair(T.ColorJitter):
 
         return img1, img2
 
-def get_pair_transforms_gator(transform_str, normalize=False):
-    # transform_str is eg    crop224+color
+def get_pair_transforms_gator(transform_str):
+    # transform_str is eg    crop224+color+norm
     trfs = []
     for s in transform_str.split('+'):
         if s.startswith('crop'):
@@ -57,16 +57,16 @@ def get_pair_transforms_gator(transform_str, normalize=False):
             trfs.append(RandomCropPair(size))
         elif s=='acolor':
             trfs.append(ColorJitterPair(assymetric_prob=1.0, brightness=(0.6, 1.4), contrast=(0.6, 1.4), saturation=(0.6, 1.4), hue=0.0))
+        elif s=="norm":
+            trfs.append( NormalizeBoth(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]) )
+
         elif s=='': # if transform_str was ""
             pass
         else:
             raise NotImplementedError('Unknown augmentation: '+s)
             
-    
     trfs.append( ToTensorBoth() )
-    if normalize:
-        trfs.append( NormalizeBoth(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]) )
-
+    
     if len(trfs)==1:
         return trfs
     else:

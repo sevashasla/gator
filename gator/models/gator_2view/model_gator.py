@@ -4,42 +4,19 @@ import torch.nn as nn
 
 from gator.models.blocks import PatchEmbed, Block, DecoderBlock
 from gator.models.pos_embed import get_2d_sincos_pos_embed, RoPE2D
-
+from gator.models.jigsaw_1view.model_jigsaw import Jigsaw1ViewConfig, _IMAGE_MEAN, _IMAGE_STD
 
 from dataclasses import dataclass
+
 @dataclass
-class GatorConfig:
+class GatorConfig(Jigsaw1ViewConfig):
     """
-    config for Gator model
+    config for Gator 2-View Model
     """
-
-    num_register_tokens: int = 4
-    """
-    Number of register tokens to use
-    """
-
-    patch_size: int = 16
-    image_size: int = 224
-    shuffle_ratio: float = 0.5
-    
-    # https://huggingface.co/WinKawaks/vit-tiny-patch16-224/blob/main/config.json
-    enc_emb_dim: int = 192
-    enc_depth: int = 12
-    enc_num_heads: int = 3
 
     dec_emb_dim: int = 192
     dec_depth: int = 8
     dec_num_heads: int = 3
-    mlp_ratio: float = 4.0
-
-    fused_attn: bool = True
-
-    rope_freq: int = 100.0
-
-    predict_position: bool = False
-
-_IMAGE_MEAN = [0.485, 0.456, 0.406]
-_IMAGE_STD = [0.229, 0.224, 0.225]
 
 class Gator(nn.Module):
     def __init__(self, config: GatorConfig) -> None:
@@ -140,7 +117,7 @@ class Gator(nn.Module):
             x = x + self._no_pos_emb # add a learnable no_pos_emb to the input tokens
             ground_truth_pos = pos[mask].view(B, N1, 2) # (B, N1, 2)
             # dummy pos for the encoder to behave like shuffling
-            pos = torch.zeros_like(pos)
+            pos = torch.zeros_like(pos[mask]).view(B, N1, 2)
 
         register_tokens = self._register_tokens.expand(B, -1, -1) # (B, num_register_tokens, D)
         x = torch.cat([register_tokens, x], dim=1)
