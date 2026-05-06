@@ -42,7 +42,7 @@ DATASET="Kitti12('train')+Kitti15('train')+30*ETH3DLowRes(split='train')+50*Md14
 VAL_DATASET="ETH3DLowRes(split='subval')+Md14('subval')+Booster('subval_balanced')+Md21('subval')"
 
 # FLOW
-# DATASET="40*MPISintel('subtrain_cleanpass')+40*MPISintel('subtrain_finalpass')"
+# DATASET="40*MPISintel('subtrain_cleanpass')+40*MPISintel('subtrain_finalpass')+4*FlyingChairs('train')"
 # VAL_DATASET="MPISintel('subval_cleanpass')+MPISintel('subval_finalpass')"
 
 BATCH_SIZE=16
