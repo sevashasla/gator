@@ -3,7 +3,7 @@
 #SBATCH --time=24:00:00
 #SBATCH --account=cs-503
 #SBATCH --qos=cs-503
-#SBATCH --gres=gpu:1
+#SBATCH --gres=gpu:4
 #SBATCH --mem=128G
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=8
@@ -26,9 +26,9 @@ mkdir -p logs
 # User-configurable paths / hyperparameters
 # -----------------------------------------------------------------------------
 MODEL="gator"                                   # "croco" or "gator"
-TASK="stereo"                                     # "stereo" or "flow"
-NUM_GPUS=1                                     # must match --gres=gpu:N above
-CRITERION="LaplacianLossBounded2()"
+TASK="flow"                                     # "stereo" or "flow"
+NUM_GPUS=4                                     # must match --gres=gpu:N above
+CRITERION="LaplacianLossBounded()"
 
 OUTPUT_DIR="./checkpoints/${SLURM_JOB_NAME}_${SLURM_JOB_ID}"
 
@@ -38,17 +38,17 @@ OUTPUT_DIR="./checkpoints/${SLURM_JOB_NAME}_${SLURM_JOB_ID}"
 PRETRAINED="/scratch/izar/skorokho/gator/exp-gator-005/checkpoints/last.ckpt"
 
 # STEREO
-DATASET="Kitti12('train')+Kitti15('train')+30*ETH3DLowRes(split='train')+50*Md14('train')+50*Md21('train')+Booster('train_balanced')"
-VAL_DATASET="ETH3DLowRes(split='subval')+Md14('subval')+Booster('subval_balanced')+Md21('subval')"
+# DATASET="Kitti12('train')+Kitti15('train')+30*ETH3DLowRes(split='train')+50*Md14('train')+50*Md21('train')+Booster('train_balanced')"
+# VAL_DATASET="ETH3DLowRes(split='subval')+Md14('subval')+Boo ter('subval_balanced')+Md21('subval')"
 
 # FLOW
-# DATASET="40*MPISintel('subtrain_cleanpass')+40*MPISintel('subtrain_finalpass')+4*FlyingChairs('train')"
-# VAL_DATASET="MPISintel('subval_cleanpass')+MPISintel('subval_finalpass')"
+DATASET="40*MPISintel('subtrain_cleanpass')+40*MPISintel('subtrain_finalpass')+4*FlyingChairs('train')"
+VAL_DATASET="MPISintel('subval_cleanpass')+MPISintel('subval_finalpass')"
 
-BATCH_SIZE=16
-EPOCHS=32
+BATCH_SIZE=8
+EPOCHS=100
 NUM_WORKERS=8
-ACCUM_ITER=2
+ACCUM_ITER=1
 
 mkdir -p "${OUTPUT_DIR}"
 
@@ -94,4 +94,5 @@ torchrun --standalone --nproc_per_node=${NUM_GPUS} stereoflow/train.py "${TASK}"
     --epochs      ${EPOCHS} \
     --num_workers ${NUM_WORKERS} \
     --accum_iter  ${ACCUM_ITER} \
+    --img_per_epoch 30000 \
     --amp 1
