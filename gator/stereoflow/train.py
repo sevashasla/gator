@@ -28,7 +28,7 @@ from gator.models.croco_downstream import CroCoDownstreamBinocular, croco_args_f
 from gator.models.pos_embed import interpolate_pos_embed
 from gator.models.head_downstream import PixelwiseTaskWithDPT
 from gator.models.gator_downstream import GatorDownstreamBinocular, load_gator_state_dict
-from gator.models.model_gator import GatorConfig
+from gator.models.gator_2view.model_gator import GatorConfig
 
 from gator.stereoflow.datasets_stereo import get_train_dataset_stereo, get_test_datasets_stereo
 from gator.stereoflow.datasets_flow import get_train_dataset_flow, get_test_datasets_flow

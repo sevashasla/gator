@@ -1,9 +1,9 @@
 #!/bin/bash
 #SBATCH --job-name=gator_ft
-#SBATCH --time=24:00:00
+#SBATCH --time=16:00:00
 #SBATCH --account=cs-503
 #SBATCH --qos=cs-503
-#SBATCH --gres=gpu:4
+#SBATCH --gres=gpu:2
 #SBATCH --mem=128G
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=8
@@ -27,7 +27,7 @@ mkdir -p logs
 # -----------------------------------------------------------------------------
 MODEL="gator"                                   # "croco" or "gator"
 TASK="flow"                                     # "stereo" or "flow"
-NUM_GPUS=4                                     # must match --gres=gpu:N above
+NUM_GPUS=2                                     # must match --gres=gpu:N above
 CRITERION="LaplacianLossBounded()"
 
 OUTPUT_DIR="./checkpoints/${SLURM_JOB_NAME}_${SLURM_JOB_ID}"

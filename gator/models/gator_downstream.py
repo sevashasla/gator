@@ -4,7 +4,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 
-from gator.models.model_gator import GatorConfig
+from gator.models.gator_2view.model_gator import GatorConfig
 from gator.models.pos_embed import get_2d_sincos_pos_embed, RoPE2D
 from gator.models.blocks import PatchEmbed, Block, DecoderBlock
 
