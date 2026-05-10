@@ -29,6 +29,9 @@ from gator.models.pos_embed import interpolate_pos_embed
 from gator.models.head_downstream import PixelwiseTaskWithDPT
 from gator.models.gator_downstream import GatorDownstreamBinocular, load_gator_state_dict
 from gator.models.gator_2view.model_gator import GatorConfig
+from gator.models.oneview_downstream import OneViewDownstreamBinocular, load_oneview_state_dict
+from gator.models.mae_1view.model_mae import MAEConfig
+from gator.models.jigsaw_1view.model_jigsaw import Jigsaw1ViewConfig
 
 from gator.stereoflow.datasets_stereo import get_train_dataset_stereo, get_test_datasets_stereo
 from gator.stereoflow.datasets_flow import get_train_dataset_flow, get_test_datasets_flow
@@ -49,7 +52,7 @@ def get_args_parser():
     # output dir
     add_arg('--output_dir', required=True, type=str, help='path where to save, if empty, automatically created')
     # model
-    add_arg('--model', default='croco', type=str, choices=['croco', 'gator'], help='Model backbone to finetune (croco or gator)')
+    add_arg('--model', default='croco', type=str, choices=['croco', 'gator', 'mae', 'jigsaw_1view'], help='Model backbone to finetune')
     add_arg('--crop', type=int, nargs = '+', default_stereo=[352, 704], default_flow=[320, 384], help = "size of the random image crops used during training.")
     add_arg('--pretrained', required=True, type=str, help="Path to pretrained checkpoint (CroCo .pth or Gator Lightning .ckpt)")
     # criterion  
@@ -125,13 +128,21 @@ def main(args):
         interpolate_pos_embed(model, ckpt['model'])
         msg = model.load_state_dict(ckpt['model'], strict=False)
         print(msg)
-    else:  # gator
+    elif args.model == 'gator':
         gator_config = GatorConfig()
         print('Gator config: ' + str(gator_config))
         args.gator_config = gator_config  # saved for test time
         model = GatorDownstreamBinocular(head, gator_config, img_size=(args.crop[0], args.crop[1]))
         gator_state_dict = load_gator_state_dict(ckpt)
         msg = model.load_state_dict(gator_state_dict, strict=False)
+        print(msg)
+    else:  # mae or jigsaw_1view
+        oneview_config = MAEConfig() if args.model == 'mae' else Jigsaw1ViewConfig()
+        print(f'OneView ({args.model}) config: ' + str(oneview_config))
+        args.oneview_config = oneview_config  # saved for test time
+        model = OneViewDownstreamBinocular(head, oneview_config, img_size=(args.crop[0], args.crop[1]))
+        oneview_state_dict = load_oneview_state_dict(ckpt)
+        msg = model.load_state_dict(oneview_state_dict, strict=False)
         print(msg)
 
     total_params = sum(p.numel() for p in model.parameters())
