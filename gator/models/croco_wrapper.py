@@ -2,6 +2,7 @@ import lightning as L
 import torch
 from gator.models.criterion import MaskedMSE
 from gator.models.croco import CroCoNet
+from gator.models.gator_visualizer.denormalize import Denormalize
 from gator.utils import misc
 from gator import logger
 import torchvision.transforms.v2.functional as TF
@@ -14,11 +15,18 @@ class CroCoWrapper(L.LightningModule):
             model: CroCoNet,
             loss_fn: MaskedMSE,
             optimization_config: OptimizationParameters,
+            denormalize_imagenet: bool = True,
         ) -> None:
         super().__init__()
         self._model = model
         self._loss_fn = loss_fn
         self._opt_config = optimization_config
+        self._denormalize_imagenet = denormalize_imagenet
+
+        self._denormalize = Denormalize(
+            denormalize_imagenet=self._denormalize_imagenet,
+            denormalize_target=self._loss_fn.norm_pix_loss,
+        )
 
     def forward(self, images) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """
@@ -61,7 +69,16 @@ class CroCoWrapper(L.LightningModule):
             indices = torch.randperm(batch.size(0))[:8]
             images_gt_part = batch[indices, 0, :, :, :]
             images_ref = batch[indices, 1, :, :, :]
-            images_pred = self._model.unpatchify(out[indices])
+            images_pred = out[indices]
+
+            patches_pred = self._denormalize.denormalize_pred(
+                pred=images_pred,
+                target=self._model.patchify(images_gt_part),
+            )
+            images_pred = self._model.unpatchify(patches_pred)
+            images_gt_part, images_ref, images_pred = self._denormalize.denormalize_images(
+                [images_gt_part, images_ref, images_pred]
+            )
 
             # (8, C, H, W) -> (C, H, 8*W)
             images_ref_cat = torch.cat(images_ref.unbind(0), dim=-1)

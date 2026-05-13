@@ -58,14 +58,18 @@ def get_pair_transforms_gator(transform_str):
         elif s=='acolor':
             trfs.append(ColorJitterPair(assymetric_prob=1.0, brightness=(0.6, 1.4), contrast=(0.6, 1.4), saturation=(0.6, 1.4), hue=0.0))
         elif s=="norm":
-            trfs.append( NormalizeBoth(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]) )
+            trfs.extend([
+                ToTensorBoth(),
+                NormalizeBoth(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+            ])
 
         elif s=='': # if transform_str was ""
             pass
         else:
             raise NotImplementedError('Unknown augmentation: '+s)
-            
-    trfs.append( ToTensorBoth() )
+    
+    if "norm" not in transform_str:
+        trfs.append( ToTensorBoth() )
     
     if len(trfs)==1:
         return trfs

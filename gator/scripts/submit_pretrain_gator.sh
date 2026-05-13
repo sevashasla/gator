@@ -1,8 +1,7 @@
 #!/bin/bash
 #SBATCH --job-name=gator_pretrain
-#SBATCH --time=12:00:00
+#SBATCH --time=24:00:00
 #SBATCH --account=cs-503
-#SBATCH --qos=cs-503
 #SBATCH --gres=gpu:1
 #SBATCH --mem=64G
 #SBATCH --ntasks=1
@@ -19,4 +18,4 @@ module load gcc cudnn
 #     --gator-loss-config.name visual \
 #     --gator-visualizer-config.name visual
 
-python3 gator/scripts/pretrain_gator.py "$@"
+python3 gator/scripts/pretrainings/pretrain_gator.py "$@"

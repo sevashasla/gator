@@ -39,7 +39,7 @@ class TrainingArgumentsCroco(TrainingArgumentsJigsaw):
     loss_config: ClassVar[None] = None
     model_config: ClassVar[None] = None
     visualizer_config: ClassVar[None] = None
-    opt_params = field(
+    opt_params: OptimizationParameters = field(
         default_factory=lambda: OptimizationParameters(
             weight_decay=0.05,
             blr=1.5e-4 / 2, # because we use 128 but not 256 batch size
