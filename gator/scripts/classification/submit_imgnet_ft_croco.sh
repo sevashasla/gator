@@ -12,8 +12,7 @@
 
 cd /home/mayila/gator/
 
-source ~/.bashrc
-conda activate nanovlm
+source .venv/bin/activate
 
 export PYTHONPATH=/home/mayila/gator:$PYTHONPATH
 export HF_DATASETS_CACHE=/scratch/izar/mayila/.cache/huggingface
