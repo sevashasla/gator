@@ -1,0 +1,21 @@
+edited_root: ./docs/diffusion_editing/images_edit
+images:
+
+- name: img01.png
+  rectangle: [11, 11, 3, 3]
+  new_position: [11, 6]
+  mask_patch: [9, 9]
+
+- name: img02.png
+  rectangle: 
+  new_position: 
+  mask_patch: 
+
+- name: img05.png
+  rectangle: [3, 5, 5, 3]
+  new_position: [0, 6]
+  mask_patch: [2, 3]
+
+- name: img02.png
+  patches_init: []
+  patches_final: []
