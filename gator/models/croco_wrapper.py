@@ -64,7 +64,7 @@ class CroCoWrapper(L.LightningModule):
         loss = self._loss_fn(out, mask1, target)
         self.log("val_loss", loss, on_step=False, on_epoch=True, sync_dist=True)
 
-        if batch_idx == 0:
+        if batch_idx == 0 and self.trainer.is_global_zero:
             # randomly select 8 images from the batch
             indices = torch.randperm(batch.size(0))[:8]
             images_gt_part = batch[indices, 0, :, :, :]
