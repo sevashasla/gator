@@ -1,6 +1,7 @@
 from gator.models.criterion import MaskedMSE
 from gator.models.gator_visualizer.mae import MAEVis
 from gator.models.jigsaw_1view.jigsaw_wrapper import Jigsaw1ViewWrapper, OptimizationParameters
+from gator.models.gator_visualizer.denormalize import Denormalize
 import lightning as L
 import torch
 
@@ -21,6 +22,7 @@ class MAE1ViewWrapper(Jigsaw1ViewWrapper):
             loss_fn: MaskedMSE,
             visualizer: GatorBaseVis,
             optimization_config: OptimizationParameters,
+            denormalize_imagenet: bool = True,
         ) -> None:
 
         super().__init__(
@@ -40,7 +42,11 @@ class MAE1ViewWrapper(Jigsaw1ViewWrapper):
         self._model: MAEModel
         self._loss_fn: MaskedMSE
 
-
+        self._denormalize_imagenet = denormalize_imagenet
+        self._denormalize = Denormalize(
+            denormalize_imagenet=self._denormalize_imagenet,
+            denormalize_target=self._loss_fn.norm_pix_loss,
+        )
 
     def forward(self, images, mask_ratio: float | None = None) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """
@@ -74,6 +80,16 @@ class MAE1ViewWrapper(Jigsaw1ViewWrapper):
             gt_pos=gt_pos[indices],
             gt_image=images_gt_part,
             num_register_tokens=num_register_tokens,
+        )
+
+        patches_pred = self._denormalize.denormalize_pred(
+            pred=self._visualizer.patchify(images_pred),
+            target=self._visualizer.patchify(images_gt_part),
+        )
+        images_pred = self._visualizer.unpatchify(patches_pred)
+        
+        images_gt_part, images_pred = self._denormalize.denormalize_images(
+            [images_gt_part, images_pred]
         )
 
         # (8, C, H, W) -> (C, H, 8*W)
