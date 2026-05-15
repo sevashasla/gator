@@ -2,20 +2,57 @@ edited_root: ./docs/diffusion_editing/images_edit
 images:
 
 - name: img01.png
-  rectangle: [11, 11, 3, 3]
-  new_position: [11, 6]
-  mask_patch: [9, 9]
+  rectangle1: [11, 9, 3, 3]
+  rectangle2: [11, 6, 3, 3]
 
 - name: img02.png
-  rectangle: 
-  new_position: 
-  mask_patch: 
+  rectangle1: [12, 7, 2, 5]
+  rectangle2: [12, 2, 2, 5]
+
+- name: img04.png
+  rectangle1: [7, 4, 2, 2]
+  rectangle2: [7, 2, 2, 2]
 
 - name: img05.png
-  rectangle: [3, 5, 5, 3]
-  new_position: [0, 6]
-  mask_patch: [2, 3]
+  rectangle1: [3, 5, 4, 3]
+  rectangle2: [9, 8, 4, 3]
 
-- name: img02.png
-  patches_init: []
-  patches_final: []
+- name: img06.png
+  rectangle1: [1, 2, 3, 2]
+  rectangle2: [4, 2, 3, 2]
+
+- name: img07.png
+  rectangle1: [4, 9, 4, 3]
+  rectangle2: [9, 9, 4, 3]
+
+- name: img08.png
+  rectangle1: [8, 6, 3, 3]
+  rectangle2: [4, 8, 3, 3]
+
+- name: img09.png
+  rectangle1: []
+  rectangle2: []
+
+- name: img10.png
+  rectangle1: [8, 4, 1, 1]
+  rectangle2: [10, 2, 1, 1]
+
+- name: img11.png
+  rectangle1: [2, 1, 4, 3]
+  rectangle2: [5, 10, 4, 3]
+
+- name: img12.png
+  rectangle1: [4, 7, 4, 3]
+  rectangle2: [1, 10, 4, 3]
+
+- name: img13.png
+  rectangle1: [8, 3, 3, 3]
+  rectangle2: [7, 6, 3, 3]
+
+- name: img14.png
+  rectangle1: [12, 7, 1, 1]
+  rectangle2: [13, 6, 1, 1]
+
+- name: img15.png
+  rectangle1: [6, 12, 1, 1]
+  rectangle2: [5, 11, 1, 1]
