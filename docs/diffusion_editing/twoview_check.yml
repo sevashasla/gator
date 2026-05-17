@@ -5,9 +5,9 @@ images:
   rectangle1: [11, 9, 3, 3]
   rectangle2: [11, 6, 3, 3]
 
-- name: img02.png
-  rectangle1: [12, 7, 2, 5]
-  rectangle2: [12, 2, 2, 5]
+# - name: img02.png
+#   rectangle1: [2, 1, 5, 3]
+#   rectangle2: [8, 1, 5, 3]
 
 - name: img04.png
   rectangle1: [7, 4, 2, 2]
@@ -25,17 +25,17 @@ images:
   rectangle1: [4, 9, 4, 3]
   rectangle2: [9, 9, 4, 3]
 
-- name: img08.png
-  rectangle1: [8, 6, 3, 3]
-  rectangle2: [4, 8, 3, 3]
+# - name: img08.png
+#   rectangle1: [8, 6, 3, 3]
+#   rectangle2: [4, 8, 3, 3]
 
-- name: img09.png
-  rectangle1: []
-  rectangle2: []
+# - name: img09.png
+#   rectangle1: []
+#   rectangle2: []
 
-- name: img10.png
-  rectangle1: [8, 4, 1, 1]
-  rectangle2: [10, 2, 1, 1]
+# - name: img10.png
+#   rectangle1: [8, 4, 1, 1]
+#   rectangle2: [10, 2, 1, 1]
 
 - name: img11.png
   rectangle1: [2, 1, 4, 3]
@@ -46,13 +46,13 @@ images:
   rectangle2: [1, 10, 4, 3]
 
 - name: img13.png
-  rectangle1: [8, 3, 3, 3]
-  rectangle2: [7, 6, 3, 3]
+  rectangle1: [7, 6, 3, 3]
+  rectangle2: [8, 3, 3, 3]
 
-- name: img14.png
-  rectangle1: [12, 7, 1, 1]
-  rectangle2: [13, 6, 1, 1]
+# - name: img14.png
+#   rectangle1: [12, 7, 1, 1]
+#   rectangle2: [13, 6, 1, 1]
 
-- name: img15.png
-  rectangle1: [6, 12, 1, 1]
-  rectangle2: [5, 11, 1, 1]
+# - name: img15.png
+#   rectangle1: [6, 12, 1, 1]
+#   rectangle2: [5, 11, 1, 1]
