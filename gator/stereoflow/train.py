@@ -84,6 +84,9 @@ def get_args_parser():
     add_arg('--start_from', type=str, default=None, help='Start training using weights from an other model (eg for finetuning)')
     add_arg('--tboard_log_step', type=int, default=100, help='Log to tboard every so many steps')
     add_arg('--dist_url', default='env://', help='url used to set up distributed training')
+    add_arg('--wandb', default=0, type=int, choices=[0,1], help='Enable Weights & Biases logging')
+    add_arg('--wandb_project', default='stereoflow', type=str, help='wandb project name')
+    add_arg('--wandb_name', default=None, type=str, help='wandb run name (default: auto)')
 
     return parser
     
@@ -187,6 +190,28 @@ def main(args):
     if global_rank == 0 and args.output_dir is not None:
         log_writer = SummaryWriter(log_dir=args.output_dir, purge_step=args.start_epoch*1000)
 
+    # wandb (optional, rank 0 only)
+    wandb_run = None
+    if global_rank == 0 and args.wandb:
+        import wandb
+        run_id_file = os.path.join(args.output_dir, 'wandb_run_id.txt')
+        run_id = None
+        if os.path.isfile(run_id_file):
+            with open(run_id_file) as f:
+                run_id = f.read().strip()
+        wandb_run = wandb.init(
+            project=args.wandb_project,
+            name=args.wandb_name,
+            id=run_id,
+            config={k: v for k, v in vars(args).items()
+                    if isinstance(v, (int, float, str, bool, list, type(None)))},
+            dir=args.output_dir,
+            resume='allow',
+        )
+        if run_id is None:
+            with open(run_id_file, 'w') as f:
+                f.write(wandb_run.id)
+
     #  dataset and loader 
     print('Building Train Data loader for dataset: ', args.dataset)
     train_dataset = (get_train_dataset_stereo if args.task=='stereo' else get_train_dataset_flow)(args.dataset, crop_size=args.crop)
@@ -229,7 +254,7 @@ def main(args):
             
         # Train
         epoch_start = time.time()
-        train_stats = train_one_epoch(model, criterion, metrics, data_loader_train, optimizer, device, epoch, loss_scaler, log_writer=log_writer, args=args)
+        train_stats = train_one_epoch(model, criterion, metrics, data_loader_train, optimizer, device, epoch, loss_scaler, log_writer=log_writer, wandb_run=wandb_run, args=args)
         epoch_time = time.time() - epoch_start
 
         if args.distributed: dist.barrier()
@@ -265,7 +290,13 @@ def main(args):
                 log_writer.flush()
             with open(os.path.join(args.output_dir, "log.txt"), mode="a", encoding="utf-8") as f:
                 f.write(json.dumps(log_stats) + "\n")
-        
+
+        if wandb_run is not None:
+            wandb_run.log(log_stats)
+
+    if wandb_run is not None:
+        wandb_run.finish()
+
     total_time = time.time() - start_time
     total_time_str = str(datetime.timedelta(seconds=int(total_time)))
     print('Training time {}'.format(total_time_str))

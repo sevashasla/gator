@@ -25,7 +25,7 @@ def split_prediction_conf(predictions, with_conf=False):
 def train_one_epoch(model: torch.nn.Module, criterion: torch.nn.Module, metrics: torch.nn.Module,
                     data_loader: Iterable, optimizer: torch.optim.Optimizer,
                     device: torch.device, epoch: int, loss_scaler,
-                    log_writer=None, print_freq = 20,
+                    log_writer=None, wandb_run=None, print_freq=20,
                     args=None):
     model.train(True)
     metric_logger = misc.MetricLogger(delimiter="  ")
@@ -86,13 +86,21 @@ def train_one_epoch(model: torch.nn.Module, criterion: torch.nn.Module, metrics:
         #if args.dsitributed: loss_value_reduce = misc.all_reduce_mean(loss_value)
         time_to_log = ((data_iter_step + 1) % (args.tboard_log_step * accum_iter) == 0 or data_iter_step == len_data_loader-1)
         loss_value_reduce = misc.all_reduce_mean(loss_value)
-        if log_writer is not None and time_to_log:
+        if time_to_log:
             epoch_1000x = int((data_iter_step / len_data_loader + epoch) * 1000)
-            # We use epoch_1000x as the x-axis in tensorboard. This calibrates different curves when batch size changes.
-            log_writer.add_scalar('train/loss', loss_value_reduce, epoch_1000x)
-            log_writer.add_scalar('lr', lr, epoch_1000x)
-            for k,v in batch_metrics.items():
-                log_writer.add_scalar('train/'+k, v.item(), epoch_1000x)
+            # We use epoch_1000x as the x-axis. This calibrates different curves when batch size changes.
+            if log_writer is not None:
+                log_writer.add_scalar('train/loss', loss_value_reduce, epoch_1000x)
+                log_writer.add_scalar('lr', lr, epoch_1000x)
+                for k, v in batch_metrics.items():
+                    log_writer.add_scalar('train/'+k, v.item(), epoch_1000x)
+            if wandb_run is not None:
+                wandb_run.log({
+                    'train_step/loss': loss_value_reduce,
+                    'train_step/lr': lr,
+                    **{'train_step/'+k: v.item() for k, v in batch_metrics.items()},
+                    'epoch_1000x': epoch_1000x,
+                })
 
     # gather the stats from all processes
     #if args.distributed: metric_logger.synchronize_between_processes()

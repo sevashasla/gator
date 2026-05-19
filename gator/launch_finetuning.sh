@@ -1,6 +1,6 @@
 #!/bin/bash
-#SBATCH --job-name=gator_ft
-#SBATCH --time=16:00:00
+#SBATCH --job-name=gator_cl
+#SBATCH --time=24:00:00
 #SBATCH --account=cs-503
 #SBATCH --qos=cs-503
 #SBATCH --gres=gpu:2
@@ -35,7 +35,7 @@ OUTPUT_DIR="./checkpoints/${SLURM_JOB_NAME}_${SLURM_JOB_ID}"
 # CroCo pretrained checkpoint (.pth):
 # PRETRAINED="./pretrained_models/CroCo_V2_ViTLarge_BaseDecoder.pth"
 # Gator pretrained checkpoint (Lightning .ckpt) — uncomment and set MODEL="gator":
-PRETRAINED="/scratch/izar/skorokho/gator/exp-gator-005/checkpoints/last.ckpt"
+PRETRAINED="/scratch/izar/skorokho/gator/gator-classification-lr-1e-4/checkpoints/last.ckpt"
 
 # STEREO
 # DATASET="Kitti12('train')+Kitti15('train')+30*ETH3DLowRes(split='train')+50*Md14('train')+50*Md21('train')+Booster('train_balanced')"
@@ -45,8 +45,8 @@ PRETRAINED="/scratch/izar/skorokho/gator/exp-gator-005/checkpoints/last.ckpt"
 DATASET="40*MPISintel('subtrain_cleanpass')+40*MPISintel('subtrain_finalpass')+4*FlyingChairs('train')"
 VAL_DATASET="MPISintel('subval_cleanpass')+MPISintel('subval_finalpass')"
 
-BATCH_SIZE=8
-EPOCHS=100
+BATCH_SIZE=16
+EPOCHS=50
 NUM_WORKERS=8
 ACCUM_ITER=1
 
@@ -95,4 +95,7 @@ torchrun --standalone --nproc_per_node=${NUM_GPUS} stereoflow/train.py "${TASK}"
     --num_workers ${NUM_WORKERS} \
     --accum_iter  ${ACCUM_ITER} \
     --img_per_epoch 30000 \
-    --amp 1
+    --amp 1 \
+    --wandb 1 \
+    --wandb_project gator-stereoflow \
+    --wandb_name gator_flow_classification
