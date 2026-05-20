@@ -7,6 +7,7 @@
 
 import argparse
 import datetime
+from dataclasses import replace as dataclass_replace
 import json
 import numpy as np
 import os
@@ -24,7 +25,7 @@ from torch.utils.data import DataLoader
 import gator.utils
 import gator.utils.misc as misc
 from gator.utils.misc import NativeScalerWithGradNormCount as NativeScaler
-from gator.models.croco_downstream import CroCoDownstreamBinocular, croco_args_from_ckpt
+from gator.models.croco_downstream import CroCoDownstreamBinocular, croco_args_from_ckpt, load_croco_state_dict
 from gator.models.pos_embed import interpolate_pos_embed
 from gator.models.head_downstream import PixelwiseTaskWithDPT
 from gator.models.gator_downstream import GatorDownstreamBinocular, load_gator_state_dict
@@ -53,6 +54,12 @@ def get_args_parser():
     add_arg('--output_dir', required=True, type=str, help='path where to save, if empty, automatically created')
     # model
     add_arg('--model', default='croco', type=str, choices=['croco', 'gator', 'mae', 'jigsaw_1view'], help='Model backbone to finetune')
+    add_arg('--croco_config', default='', type=str,
+            help="CroCo arch string for Lightning checkpoints, e.g. \"CroCoNet(enc_embed_dim=384, enc_depth=12, enc_num_heads=6, dec_embed_dim=384, dec_depth=8, dec_num_heads=6)\"  (not needed for official .pth checkpoints)")
+    add_arg('--gator_config', default='', type=str,
+            help="Comma-separated GatorConfig field overrides, e.g. \"enc_emb_dim=384,dec_emb_dim=384,enc_num_heads=6,dec_num_heads=6\"  (empty means use GatorConfig defaults)")
+    add_arg('--oneview_config', default='', type=str,
+            help="Comma-separated Jigsaw1ViewConfig/MAEConfig field overrides, e.g. \"enc_emb_dim=384,enc_num_heads=6\"  (empty means use defaults)")
     add_arg('--crop', type=int, nargs = '+', default_stereo=[352, 704], default_flow=[320, 384], help = "size of the random image crops used during training.")
     add_arg('--pretrained', required=True, type=str, help="Path to pretrained checkpoint (CroCo .pth or Gator Lightning .ckpt)")
     # criterion  
@@ -124,15 +131,29 @@ def main(args):
     # build model and load pretrained weights
     if args.model == 'croco':
         croco_args = croco_args_from_ckpt(ckpt)
+        if not croco_args:
+            if not args.croco_config:
+                raise ValueError(
+                    "Could not infer CroCo architecture from checkpoint. "
+                    "Pass --croco_config \"CroCoNet(enc_embed_dim=384, ...)\" to specify it."
+                )
+            s = args.croco_config.strip()
+            assert s.startswith('CroCoNet('), \
+                f"--croco_config must start with 'CroCoNet(', got: {s!r}"
+            croco_args = eval('dict' + s[len('CroCoNet'):])
         croco_args['img_size'] = (args.crop[0], args.crop[1])
         print('CroCo args: ' + str(croco_args))
         args.croco_args = croco_args  # saved for test time
         model = CroCoDownstreamBinocular(head, **croco_args)
-        interpolate_pos_embed(model, ckpt['model'])
-        msg = model.load_state_dict(ckpt['model'], strict=False)
+        croco_state_dict = load_croco_state_dict(ckpt)
+        interpolate_pos_embed(model, croco_state_dict)
+        msg = model.load_state_dict(croco_state_dict, strict=False)
         print(msg)
     elif args.model == 'gator':
         gator_config = GatorConfig()
+        if args.gator_config:
+            overrides = eval(f"dict({args.gator_config})")
+            gator_config = dataclass_replace(gator_config, **overrides)
         print('Gator config: ' + str(gator_config))
         args.gator_config = gator_config  # saved for test time
         model = GatorDownstreamBinocular(head, gator_config, img_size=(args.crop[0], args.crop[1]))
@@ -141,6 +162,9 @@ def main(args):
         print(msg)
     else:  # mae or jigsaw_1view
         oneview_config = MAEConfig() if args.model == 'mae' else Jigsaw1ViewConfig()
+        if args.oneview_config:
+            overrides = eval(f"dict({args.oneview_config})")
+            oneview_config = dataclass_replace(oneview_config, **overrides)
         print(f'OneView ({args.model}) config: ' + str(oneview_config))
         args.oneview_config = oneview_config  # saved for test time
         model = OneViewDownstreamBinocular(head, oneview_config, img_size=(args.crop[0], args.crop[1]))

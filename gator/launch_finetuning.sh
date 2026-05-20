@@ -1,6 +1,6 @@
 #!/bin/bash
-#SBATCH --job-name=gator_cl
-#SBATCH --time=24:00:00
+#SBATCH --job-name=gator-small-001-24hrs
+#SBATCH --time=16:00:00
 #SBATCH --account=cs-503
 #SBATCH --qos=cs-503
 #SBATCH --gres=gpu:2
@@ -10,13 +10,11 @@
 #SBATCH --output=logs/%x_%j.out
 #SBATCH --error=logs/%x_%j.err
 
-# Finetune CroCo or Gator on stereo or flow via torchrun on a single multi-GPU node.
+# Finetune CroCo, Gator, MAE or one-view-jigsaw on stereo or flow via torchrun on a single multi-GPU node.
 #
 # Usage:
-#   sbatch submit_train.sh
+#   sbatch launch_finetuning.sh
 #
-# Set MODEL="croco" to finetune a CroCo checkpoint (.pth)
-# Set MODEL="gator"  to finetune a Gator Lightning checkpoint (.ckpt)
 
 set -euo pipefail
 cd "${SLURM_SUBMIT_DIR:-.}"
@@ -25,7 +23,13 @@ mkdir -p logs
 # -----------------------------------------------------------------------------
 # User-configurable paths / hyperparameters
 # -----------------------------------------------------------------------------
-MODEL="gator"                                   # "croco" or "gator"
+MODEL="gator"                                   # "croco", "gator", "mae", or "jigsaw_1view"
+# Required when MODEL="croco" and the checkpoint is a Lightning .ckpt (architecture is not stored in it).
+# Ignored for official CroCo .pth files (architecture is auto-detected).
+CROCO_CONFIG="CroCoNet(enc_embed_dim=384, enc_depth=12, enc_num_heads=6, dec_embed_dim=384, dec_depth=8, dec_num_heads=6, mlp_ratio=4.0, pos_embed='RoPE100')"
+# Overrides for GatorConfig defaults (empty string = tiny/192-dim defaults).
+# Set to match the pretrained checkpoint's architecture.
+GATOR_CONFIG="enc_emb_dim=384,dec_emb_dim=384,enc_num_heads=6,dec_num_heads=6"
 TASK="flow"                                     # "stereo" or "flow"
 NUM_GPUS=2                                     # must match --gres=gpu:N above
 CRITERION="LaplacianLossBounded()"
@@ -35,7 +39,7 @@ OUTPUT_DIR="./checkpoints/${SLURM_JOB_NAME}_${SLURM_JOB_ID}"
 # CroCo pretrained checkpoint (.pth):
 # PRETRAINED="./pretrained_models/CroCo_V2_ViTLarge_BaseDecoder.pth"
 # Gator pretrained checkpoint (Lightning .ckpt) — uncomment and set MODEL="gator":
-PRETRAINED="/scratch/izar/skorokho/gator/gator-classification-lr-1e-4/checkpoints/last.ckpt"
+PRETRAINED="/scratch/izar/skorokho/gator/final-ckpts/gator-small-classification-000-24hrs.ckpt"
 
 # STEREO
 # DATASET="Kitti12('train')+Kitti15('train')+30*ETH3DLowRes(split='train')+50*Md14('train')+50*Md21('train')+Booster('train_balanced')"
@@ -84,7 +88,9 @@ echo "OUTPUT_DIR=${OUTPUT_DIR}"
 # Launch — torchrun spawns one worker per GPU on this node
 # -----------------------------------------------------------------------------
 torchrun --standalone --nproc_per_node=${NUM_GPUS} stereoflow/train.py "${TASK}" \
-    --model       "${MODEL}" \
+    --model        "${MODEL}" \
+    --croco_config "${CROCO_CONFIG}" \
+    --gator_config "${GATOR_CONFIG}" \
     --criterion   "${CRITERION}" \
     --output_dir  "${OUTPUT_DIR}" \
     --pretrained  "${PRETRAINED}" \
