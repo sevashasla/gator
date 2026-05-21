@@ -7,15 +7,16 @@ to the DPT head — no cross-attention between the two views.
 This serves as a baseline to compare 1-view vs 2-view pretraining on
 binocular downstream tasks (stereo / optical flow).
 
-PixelwiseTaskWithDPT compatibility:
-    enc_depth     = config.enc_depth          (img1 encoder layers)
-    dec_depth     = config.enc_depth          (img2 encoder layers, treated as "decoder")
-    enc_embed_dim = dec_embed_dim = config.enc_emb_dim
-    dec_blocks    = True
+Model-specific encoder behaviour
+---------------------------------
+MAE  (use_rope=True):
+    Pretrained with RoPE enabled and actual patch positions.
+    No _no_pos_emb — pass use_rope=True (default).
 
-With enc_depth=dec_depth=12 the DPT step is 4, giving hooks at [11,15,19,23]:
-  layer 11 = last img1 encoder layer
-  layers 15,19,23 = img2 encoder layers at 3 equidistant depths
+Jigsaw1View  (use_rope=False):
+    Pretrained with RoPE *disabled* (patches are shuffled so positions are
+    zeroed out) and a learnable _no_pos_emb bias added to every patch token.
+    Pass use_rope=False to replicate the pretraining input distribution.
 """
 
 import torch
@@ -33,19 +34,17 @@ class OneViewDownstreamBinocular(nn.Module):
         enc_depth, dec_depth, enc_embed_dim, dec_embed_dim, dec_blocks
     """
 
-    def __init__(self, head, config, img_size=(224, 224)):
+    def __init__(self, head, config, img_size=(224, 224), use_rope=True):
         super().__init__()
 
-        # PixelwiseTaskWithDPT-compatible attributes.
-        # img2 encoder layers fill the "decoder" slots so the DPT hook
-        # formula (enc+dec hook spread) applies without modification.
         self.enc_depth = config.enc_depth
-        self.dec_depth = config.enc_depth
+        self.dec_depth = config.enc_depth  # img2 encoder layers fill the "decoder" slots
         self.enc_embed_dim = config.enc_emb_dim
-        self.dec_embed_dim = config.enc_emb_dim  # same dim, both are encoder features
+        self.dec_embed_dim = config.enc_emb_dim
         self.dec_blocks = True
         self.num_register_tokens = config.num_register_tokens
         self._config = config
+        self._use_rope = use_rope
 
         self._patch_embed = PatchEmbed(
             img_size=img_size,
@@ -59,6 +58,12 @@ class OneViewDownstreamBinocular(nn.Module):
         self._register_tokens = nn.Parameter(
             torch.randn(1, config.num_register_tokens, config.enc_emb_dim)
         )
+
+        # Jigsaw1View adds _no_pos_emb to every patch token during pretraining.
+        # Recreate the parameter so its pretrained value can be loaded and the
+        # input distribution seen by the encoder matches pretraining.
+        if not use_rope:
+            self._no_pos_emb = nn.Parameter(torch.zeros(1, 1, config.enc_emb_dim))
 
         if RoPE2D is None:
             raise ImportError("RoPE2D is not available; check installation")
@@ -81,13 +86,17 @@ class OneViewDownstreamBinocular(nn.Module):
         self.head = head
 
     def _encode_image(self, img):
-        """Encode one image with RoPE, returning per-layer patch features (registers stripped).
+        """Encode one image, returning per-layer patch features (registers stripped).
 
         Returns:
             list of enc_depth tensors, each (B, N, enc_emb_dim)
         """
         x, pos = self._patch_embed(img)  # (B, N, D), (B, N, 2)
         B = x.size(0)
+
+        # Jigsaw1View adds _no_pos_emb to patch tokens before encoding.
+        if hasattr(self, '_no_pos_emb'):
+            x = x + self._no_pos_emb
 
         reg = self._register_tokens.expand(B, -1, -1)
         x = torch.cat([reg, x], dim=1)
@@ -99,7 +108,7 @@ class OneViewDownstreamBinocular(nn.Module):
 
         layers = []
         for block in self._encoder_blocks:
-            x = block(x, xpos=pos, use_rope=True)
+            x = block(x, xpos=pos, use_rope=self._use_rope)
             layers.append(x[:, self.num_register_tokens:, :])
         x = self._enc_norm(x)
         layers[-1] = x[:, self.num_register_tokens:, :]
@@ -122,7 +131,8 @@ def load_oneview_state_dict(ckpt):
     Strips the '_model.' prefix and drops pretraining-only components
     that are not part of the downstream encoder:
       - MAE: _masked_token, _decoder_embed, _decoder_blocks, _decoder_norm, _decoder_pred
-      - Jigsaw: _final_layer, _no_pos_emb (used only during shuffling)
+      - Jigsaw: _final_layer
+      Note: _no_pos_emb is kept — it is loaded into the downstream model for Jigsaw.
     """
     state_dict = ckpt['state_dict']
     state_dict = {
@@ -132,7 +142,7 @@ def load_oneview_state_dict(ckpt):
     }
     drop_prefixes = (
         '_decoder_pred', '_decoder_embed', '_decoder_blocks', '_decoder_norm',
-        '_masked_token', '_final_layer', '_no_pos_emb',
+        '_masked_token', '_final_layer',
     )
     state_dict = {
         k: v for k, v in state_dict.items()

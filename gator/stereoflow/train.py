@@ -160,14 +160,14 @@ def main(args):
         gator_state_dict = load_gator_state_dict(ckpt)
         msg = model.load_state_dict(gator_state_dict, strict=False)
         print(msg)
-    else:  # mae or jigsaw_1view
-        oneview_config = MAEConfig() if args.model == 'mae' else Jigsaw1ViewConfig()
-        if args.oneview_config:
-            overrides = eval(f"dict({args.oneview_config})")
-            oneview_config = dataclass_replace(oneview_config, **overrides)
-        print(f'OneView ({args.model}) config: ' + str(oneview_config))
-        args.oneview_config = oneview_config  # saved for test time
-        model = OneViewDownstreamBinocular(head, oneview_config, img_size=(args.crop[0], args.crop[1]))
+    else:  # mae or jigsaw_1view — encoder from pretrained, Gator cross-attn decoder random-init
+        gator_config = GatorConfig()
+        if args.gator_config:
+            overrides = eval(f"dict({args.gator_config})")
+            gator_config = dataclass_replace(gator_config, **overrides)
+        print(f'OneView ({args.model}) backbone: GatorDownstreamBinocular with ' + str(gator_config))
+        args.gator_config = gator_config  # saved for test time
+        model = GatorDownstreamBinocular(head, gator_config, img_size=(args.crop[0], args.crop[1]))
         oneview_state_dict = load_oneview_state_dict(ckpt)
         msg = model.load_state_dict(oneview_state_dict, strict=False)
         print(msg)
@@ -223,18 +223,22 @@ def main(args):
         if os.path.isfile(run_id_file):
             with open(run_id_file) as f:
                 run_id = f.read().strip()
-        wandb_run = wandb.init(
-            project=args.wandb_project,
-            name=args.wandb_name,
-            id=run_id,
-            config={k: v for k, v in vars(args).items()
-                    if isinstance(v, (int, float, str, bool, list, type(None)))},
-            dir=args.output_dir,
-            resume='allow',
-        )
-        if run_id is None:
-            with open(run_id_file, 'w') as f:
-                f.write(wandb_run.id)
+        try:
+            wandb_run = wandb.init(
+                project=args.wandb_project,
+                name=args.wandb_name,
+                id=run_id,
+                config={k: v for k, v in vars(args).items()
+                        if isinstance(v, (int, float, str, bool, list, type(None)))},
+                dir=args.output_dir,
+                resume='allow',
+            )
+            if run_id is None:
+                with open(run_id_file, 'w') as f:
+                    f.write(wandb_run.id)
+        except Exception as e:
+            print(f"[WARNING] wandb.init() failed ({e}); continuing without wandb logging.")
+            wandb_run = None
 
     #  dataset and loader 
     print('Building Train Data loader for dataset: ', args.dataset)

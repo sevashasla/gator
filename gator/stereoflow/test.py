@@ -18,7 +18,6 @@ from torch.utils.data import DataLoader
 import gator.utils.misc as misc
 from gator.models.croco_downstream import CroCoDownstreamBinocular
 from gator.models.gator_downstream import GatorDownstreamBinocular
-from gator.models.oneview_downstream import OneViewDownstreamBinocular
 from gator.models.head_downstream import PixelwiseTaskWithDPT
 
 from gator.stereoflow.criterion import *
@@ -72,8 +71,8 @@ def _load_model_and_criterion(model_path, do_load_metrics, device):
         print('gator_config:', ckpt_args.gator_config)
         model = GatorDownstreamBinocular(head, ckpt_args.gator_config, img_size=tuple(ckpt_args.crop))
     else:  # mae or jigsaw_1view
-        print(f'oneview ({model_type}) config:', ckpt_args.oneview_config)
-        model = OneViewDownstreamBinocular(head, ckpt_args.oneview_config, img_size=tuple(ckpt_args.crop))
+        print(f'oneview ({model_type}) gator_config:', ckpt_args.gator_config)
+        model = GatorDownstreamBinocular(head, ckpt_args.gator_config, img_size=tuple(ckpt_args.crop))
     msg = model.load_state_dict(ckpt['model'], strict=True)
     model.eval()
     model = model.to(device)

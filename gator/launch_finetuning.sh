@@ -1,9 +1,9 @@
 #!/bin/bash
-#SBATCH --job-name=gator-small-001-24hrs
+#SBATCH --job-name=mae-small-001-24hrs
 #SBATCH --time=16:00:00
 #SBATCH --account=cs-503
 #SBATCH --qos=cs-503
-#SBATCH --gres=gpu:2
+#SBATCH --gres=gpu:1
 #SBATCH --mem=128G
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=8
@@ -23,15 +23,17 @@ mkdir -p logs
 # -----------------------------------------------------------------------------
 # User-configurable paths / hyperparameters
 # -----------------------------------------------------------------------------
-MODEL="gator"                                   # "croco", "gator", "mae", or "jigsaw_1view"
+MODEL="mae"                                   # "croco", "gator", "mae", or "jigsaw_1view"
 # Required when MODEL="croco" and the checkpoint is a Lightning .ckpt (architecture is not stored in it).
 # Ignored for official CroCo .pth files (architecture is auto-detected).
 CROCO_CONFIG="CroCoNet(enc_embed_dim=384, enc_depth=12, enc_num_heads=6, dec_embed_dim=384, dec_depth=8, dec_num_heads=6, mlp_ratio=4.0, pos_embed='RoPE100')"
 # Overrides for GatorConfig defaults (empty string = tiny/192-dim defaults).
 # Set to match the pretrained checkpoint's architecture.
 GATOR_CONFIG="enc_emb_dim=384,dec_emb_dim=384,enc_num_heads=6,dec_num_heads=6"
+# Overrides for MAEConfig/Jigsaw1ViewConfig defaults (only encoder fields matter for downstream).
+ONEVIEW_CONFIG="enc_emb_dim=384,enc_num_heads=6"
 TASK="flow"                                     # "stereo" or "flow"
-NUM_GPUS=2                                     # must match --gres=gpu:N above
+NUM_GPUS=1                                     # must match --gres=gpu:N above
 CRITERION="LaplacianLossBounded()"
 
 OUTPUT_DIR="./checkpoints/${SLURM_JOB_NAME}_${SLURM_JOB_ID}"
@@ -39,7 +41,7 @@ OUTPUT_DIR="./checkpoints/${SLURM_JOB_NAME}_${SLURM_JOB_ID}"
 # CroCo pretrained checkpoint (.pth):
 # PRETRAINED="./pretrained_models/CroCo_V2_ViTLarge_BaseDecoder.pth"
 # Gator pretrained checkpoint (Lightning .ckpt) — uncomment and set MODEL="gator":
-PRETRAINED="/scratch/izar/skorokho/gator/final-ckpts/gator-small-classification-000-24hrs.ckpt"
+PRETRAINED="/scratch/izar/skorokho/gator/final-ckpts/mae-small-000-24hrs.ckpt"
 
 # STEREO
 # DATASET="Kitti12('train')+Kitti15('train')+30*ETH3DLowRes(split='train')+50*Md14('train')+50*Md21('train')+Booster('train_balanced')"
@@ -77,6 +79,7 @@ source ../.venv/bin/activate
 export PYTHONUNBUFFERED=1
 export OMP_NUM_THREADS=1                         # avoid thread oversubscription
 export NCCL_ASYNC_ERROR_HANDLING=1
+export WANDB_MODE=offline                        # compute nodes lack network; sync manually with: wandb sync <run_dir>
 # export NCCL_DEBUG=INFO                         # uncomment for NCCL troubleshooting
 
 echo "SLURM_JOB_ID=${SLURM_JOB_ID}"
@@ -91,6 +94,7 @@ torchrun --standalone --nproc_per_node=${NUM_GPUS} stereoflow/train.py "${TASK}"
     --model        "${MODEL}" \
     --croco_config "${CROCO_CONFIG}" \
     --gator_config "${GATOR_CONFIG}" \
+    --oneview_config "${ONEVIEW_CONFIG}" \
     --criterion   "${CRITERION}" \
     --output_dir  "${OUTPUT_DIR}" \
     --pretrained  "${PRETRAINED}" \
@@ -104,4 +108,4 @@ torchrun --standalone --nproc_per_node=${NUM_GPUS} stereoflow/train.py "${TASK}"
     --amp 1 \
     --wandb 1 \
     --wandb_project gator-stereoflow \
-    --wandb_name gator_flow_classification
+    --wandb_name mae_flow_classification
