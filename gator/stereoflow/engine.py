@@ -70,18 +70,22 @@ def train_one_epoch(model: torch.nn.Module, criterion: torch.nn.Module, metrics:
             sys.exit(1)
 
         loss /= accum_iter
-        loss_scaler(loss, optimizer, parameters=model.parameters(),
-                    update_grad=(data_iter_step + 1) % accum_iter == 0)
-        if (data_iter_step + 1) % accum_iter == 0:
+        update_grad = (data_iter_step + 1) % accum_iter == 0
+        clip_grad = getattr(args, 'clip_grad', None)
+        grad_norm = loss_scaler(loss, optimizer, clip_grad=clip_grad, parameters=model.parameters(),
+                                update_grad=update_grad)
+        if update_grad:
             optimizer.zero_grad()
 
         torch.cuda.synchronize()
-        
+
         metric_logger.update(loss=loss_value)
         for k,v in batch_metrics.items():
             metric_logger.update(**{k: v.item()})
         lr = optimizer.param_groups[0]["lr"]
         metric_logger.update(lr=lr)
+        if grad_norm is not None:
+            metric_logger.update(grad_norm=grad_norm.item())
 
         #if args.dsitributed: loss_value_reduce = misc.all_reduce_mean(loss_value)
         time_to_log = ((data_iter_step + 1) % (args.tboard_log_step * accum_iter) == 0 or data_iter_step == len_data_loader-1)
@@ -95,12 +99,15 @@ def train_one_epoch(model: torch.nn.Module, criterion: torch.nn.Module, metrics:
                 for k, v in batch_metrics.items():
                     log_writer.add_scalar('train/'+k, v.item(), epoch_1000x)
             if wandb_run is not None:
-                wandb_run.log({
+                log_dict = {
                     'train_step/loss': loss_value_reduce,
                     'train_step/lr': lr,
                     **{'train_step/'+k: v.item() for k, v in batch_metrics.items()},
                     'epoch_1000x': epoch_1000x,
-                })
+                }
+                if grad_norm is not None:
+                    log_dict['train_step/grad_norm'] = grad_norm.item()
+                wandb_run.log(log_dict)
 
     # gather the stats from all processes
     #if args.distributed: metric_logger.synchronize_between_processes()

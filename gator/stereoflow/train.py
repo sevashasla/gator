@@ -30,9 +30,7 @@ from gator.models.pos_embed import interpolate_pos_embed
 from gator.models.head_downstream import PixelwiseTaskWithDPT
 from gator.models.gator_downstream import GatorDownstreamBinocular, load_gator_state_dict
 from gator.models.gator_2view.model_gator import GatorConfig
-from gator.models.oneview_downstream import OneViewDownstreamBinocular, load_oneview_state_dict
-from gator.models.mae_1view.model_mae import MAEConfig
-from gator.models.jigsaw_1view.model_jigsaw import Jigsaw1ViewConfig
+from gator.models.oneview_downstream import load_oneview_state_dict
 
 from gator.stereoflow.datasets_stereo import get_train_dataset_stereo, get_test_datasets_stereo
 from gator.stereoflow.datasets_flow import get_train_dataset_flow, get_test_datasets_flow
@@ -73,6 +71,7 @@ def get_args_parser():
     add_arg('--epochs', default=32, type=int, help='number of training epochs')
     add_arg('--img_per_epoch', type=int, default=None, help='Fix the number of images seen in an epoch (None means use all training pairs)')
     add_arg('--accum_iter', default=1, type=int, help='Accumulate gradient iterations (for increasing the effective batch size under memory constraints)')
+    add_arg('--clip_grad', type=float, default=None, help='Gradient clipping max norm (None = disabled)')
     add_arg('--weight_decay', type=float, default=0.05, help='weight decay (default: 0.05)')
     add_arg('--lr', type=float, default_stereo=3e-5, default_flow=2e-5, metavar='LR', help='learning rate (absolute lr)')
     add_arg('--min_lr', type=float, default=0., metavar='LR', help='lower lr bound for cyclic schedulers that hit 0')
@@ -89,6 +88,7 @@ def get_args_parser():
     add_arg('--eval_every', type=int, default=1, help='Val loss evaluation frequency')
     add_arg('--save_every', type=int, default=1, help='Save checkpoint frequency')
     add_arg('--start_from', type=str, default=None, help='Start training using weights from an other model (eg for finetuning)')
+    add_arg('--freeze_encoder', default=0, type=int, choices=[0, 1], help='Freeze encoder weights; only decoder and head are trained')
     add_arg('--tboard_log_step', type=int, default=100, help='Log to tboard every so many steps')
     add_arg('--dist_url', default='env://', help='url used to set up distributed training')
     add_arg('--wandb', default=0, type=int, choices=[0,1], help='Enable Weights & Biases logging')
@@ -170,7 +170,26 @@ def main(args):
         model = GatorDownstreamBinocular(head, gator_config, img_size=(args.crop[0], args.crop[1]))
         oneview_state_dict = load_oneview_state_dict(ckpt)
         msg = model.load_state_dict(oneview_state_dict, strict=False)
-        print(msg)
+        unexpected = msg.unexpected_keys
+        # Only the core encoder blocks, patch embed and enc_norm are required;
+        # _no_pos_emb and _register_tokens may legitimately be absent from some
+        # pretrained checkpoints (e.g. MAE has no _no_pos_emb).
+        core_missing = [k for k in msg.missing_keys
+                        if k.startswith('_encoder_blocks') or k.startswith('_patch_embed') or k == '_enc_norm']
+        if unexpected:
+            raise RuntimeError(f'Unexpected keys when loading oneview encoder (bug in load_oneview_state_dict): {unexpected}')
+        if core_missing:
+            raise RuntimeError(f'Core encoder keys were not loaded from pretrained checkpoint: {core_missing}')
+        n_init = len(msg.missing_keys)
+        print(f'  Loaded encoder weights ({len(oneview_state_dict)} tensors). '
+              f'Randomly initialised {n_init} tensors (decoder, head'
+              + (', _no_pos_emb' if '_no_pos_emb' in msg.missing_keys else '') + ').')
+
+    if args.freeze_encoder:
+        for name, param in model.named_parameters():
+            if not name.startswith('head.') and not name.startswith('_decoder'):
+                param.requires_grad_(False)
+        print("Encoder frozen: only decoder and head will be trained.")
 
     total_params = sum(p.numel() for p in model.parameters())
     total_params_trainable = sum(p.numel() for p in model.parameters() if p.requires_grad)
