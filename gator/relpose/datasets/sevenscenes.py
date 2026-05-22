@@ -8,8 +8,8 @@ from pdb import set_trace as bb
 import copy
 import os
 
-
 from gator.relpose.image_retrieval.topk_retrieval import PREPROCESS_FOLDER, DB_DESCS_FILE_MASK, PAIR_INFO_FILE_MASK
+from gator import logger
 
 
 DATA_ROOT = "/scratch/izar/skorokho/croco-dataset/7scenes"
@@ -32,7 +32,11 @@ class SevenScenesRelpose(BaseStereoViewDataset):
         self.root_folder = DATA_ROOT
         self.scene = scene
         self.intrinsics = np.array([[525.0, 0.0, 320.0], [0.0, 525.0, 240.0], [0.0, 0.0, 1.0]], dtype=np.float32)
-        self.pairs_path = pairs_info_file_mask.format(scene, db_step, topk)
+        self.pairs_path = pairs_info_file_mask.format(f"{self.scene}_{self.split}", db_step, topk)
+        logger.info(
+            f"Initializing SevenScenesRelpose dataset with scene={scene}, split={self.split}, "
+            f"pairs_path={self.pairs_path}, pair_id={pair_id}, topk={topk}"
+        )
         # load pair info 
         self.loaded_data = {}
         pairs_info = np.load(self.pairs_path, allow_pickle=True)  # list len #images, each len #topk, each element (idx, name)

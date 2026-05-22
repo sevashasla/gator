@@ -30,14 +30,11 @@ def build_dataset(dataset, batch_size, num_workers, test=False):
 @dataclass
 class Arguments:
     resolution: tuple[int, int] = (224, 224)  # by default (224,224) for Reloc3r-224
-    dataset_db_str: str = "SevenScenesRetrieval(scene='{}', split='train')"
-    dataset_q_str: str = "SevenScenesRetrieval(scene='{}', split='train')"
     db_step: int = 1
     topk: int = 10
     cache_folder: str = PREPROCESS_FOLDER
     db_descs_file_mask: str = DB_DESCS_FILE_MASK
     pair_info_file_mask: str = PAIR_INFO_FILE_MASK
-    dataset_relpose: str = "SevenScenesRelpose(scene='{}', pair_id={}, resolution={})"
     batch_size: int = 10
     num_workers: int = 10
     scene: str = 'chess',

@@ -35,7 +35,10 @@ class BaseStereoViewDataset (EasyDataset):
                  aug_crop=False,
                  seed=None):
 
-        logger.info("Building BaseStereoViewDataset with the following options:")
+        logger.info(
+            f"Building BaseStereoViewDataset with the following options: "
+            f"split={split}, resolution={resolution}, seed={seed}"
+        )
         self.num_views = 2
         self.split = split
         self._set_resolutions(resolution)

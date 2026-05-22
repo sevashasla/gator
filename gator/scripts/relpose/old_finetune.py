@@ -11,15 +11,16 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from lightning import Trainer, seed_everything
-from lightning.pytorch.loggers import WandbLogger
+from lightning.pytorch.loggers import CSVLogger, WandbLogger
 from lightning.pytorch.callbacks import ModelCheckpoint
 
-from gator.relpose.loss import RelativeCameraPoseRegression
-from gator.relpose.models.relpose_wrapper import RelposeWrapper
+from gator.models.gator_2view.model_gator import GatorConfig
+from gator.relpose.loss import L21Loss, RelativeCameraPoseRegression
+from gator.relpose.models.gator_relpose import GatorRelpose
+from gator.scripts.relpose.load_dataset import LoadDatasetArguments
 import gator.utils.misc as misc
-from gator.datasets.pairs_dataset import PairsDataset
 from gator import logger
-from gator.models.croco_wrapper import CroCoWrapper, OptimizationParameters
+from gator.relpose.models.relpose_wrapper import RelposeWrapper, RelposeOptimizationParameters
 
 @dataclass(kw_only=True)
 class TrainingArguments:
@@ -28,23 +29,17 @@ class TrainingArguments:
     """
     
     # dataset 
-    dataset: str = 'habitat_release'
+    dataset: str = '7scenes'
     """training set"""
-    transforms: str = 'crop224+acolor'
-    """
-    transforms to apply. in the paper, we also use some homography and
-    rotation, but find later that they were not useful or even harmful
-    """ 
     # training 
     seed: int = 0
     """Random seed"""
-    
-    """
-    Accumulate gradient iterations (for increasing the effective batch size
-    under memory constraints)
-    """
 
-    opt_params: OptimizationParameters
+    gator_ckpt_path: Path
+    dataset_loader: LoadDatasetArguments
+    model_config: GatorConfig
+
+    opt_params: RelposeOptimizationParameters
 
     precision: Literal['16', '32', 'bf16-mixed', '16-mixed'] = '16-mixed'
     """Use Automatic Mixed Precision for pretraining"""
@@ -53,13 +48,14 @@ class TrainingArguments:
     world_size: int = 1
     local_rank: int = -1
     num_nodes: int = 1
+    freeze_encdec: bool = True
 
     dist_url: str = 'env://'
     """url used to set up distributed training"""
     # paths 
     exp_name: str | None = None
 
-    output_dir: Path = Path('/scratch/izar/skorokho/gator/')
+    output_dir: Path = Path('/scratch/izar/skorokho/gator/relpose')
     """path where to save the output"""
     data_dir: Path = Path('/scratch/izar/skorokho/croco-dataset/')
     """path where data are stored"""
@@ -72,13 +68,8 @@ class TrainingArguments:
                 idx += 1
             self.exp_name = f"{self.exp_name}-{idx:03}"
         self.output_dir = self.output_dir / self.exp_name
-
         
 def main(args: TrainingArguments):
-    misc.init_distributed_mode(args)
-    global_rank = misc.get_rank()
-    world_size = misc.get_world_size()
-    
     logger.info("output_dir: " + str(args.output_dir))
     args.output_dir.mkdir(exist_ok=True, parents=True)
 
@@ -102,44 +93,55 @@ def main(args: TrainingArguments):
     cudnn.benchmark = True
 
     ## training dataset and loader 
-    logger.info('Building dataset for {:s} with transforms {:s}'.format(args.dataset, args.transforms))
-    dataset = PairsDataset(args.dataset, trfs=args.transforms, data_dir=args.data_dir)
-    if world_size > 1:
-        sampler_train = torch.utils.data.DistributedSampler(
-            dataset, num_replicas=world_size, rank=global_rank, shuffle=True
-        )
-        logger.info(f"Sampler_train = {str(sampler_train)}")
-    else:
-        sampler_train = torch.utils.data.RandomSampler(dataset)
+    
+    train_dataset = args.dataset_loader.get_train_dataset()
+    eval_dataset = args.dataset_loader.get_test_dataset()
+
     data_loader_train = torch.utils.data.DataLoader(
-        dataset, sampler=sampler_train,
-        batch_size=args.batch_size,
+        train_dataset,
+        batch_size=args.opt_params.batch_size,
         num_workers=args.num_workers,
-        pin_memory=True,
+        shuffle=True,
+        pin_memory=False,
         drop_last=True,
     )
-    # learning rates
-    args.opt_params.update_lr(args.batch_size)
-   
-    ## model 
-    model = CroCoNet()
-    model.to(device)
+    args.opt_params.update_steps_per_epoch(len(train_dataset))
 
-    logger.info(f'Loading criterion: MaskedMSE(norm_pix_loss={str(bool(args.norm_pix_loss))})')
-    criterion = MaskedMSE(norm_pix_loss=bool(args.norm_pix_loss))
+    data_loader_eval = torch.utils.data.DataLoader(
+        eval_dataset,
+        batch_size=args.opt_params.batch_size,
+        num_workers=args.num_workers,
+        pin_memory=False,
+        drop_last=False,
+    )
+   
+    ## model
+    model = GatorRelpose(
+        args.model_config,
+        gator_ckpt_path=args.gator_ckpt_path,
+        freeze=args.freeze_encdec,
+    )
+    model.to(device)
+    logger.info(f"Successfully loaded model from {args.gator_ckpt_path}!")
+
+    criterion = RelativeCameraPoseRegression(L21Loss())
     
-    model_wrapped = CroCoWrapper(
+    model_wrapped = RelposeWrapper(
         model=model, 
         loss_fn=criterion,
         optimization_config=args.opt_params,
     )
 
     logger.info(f"Model = {str(model_wrapped)}")
-    logger.info(f"Start training until {args.max_epoch} epochs")
+    logger.info(f"Start training until {args.opt_params.max_epoch} epochs")
     
-    wandb_logger = WandbLogger(
+    # wandb_logger = WandbLogger(
+    #     save_dir=args.output_dir,
+    #     project="relpose",
+    #     name=args.exp_name,
+    # )
+    wandb_logger = CSVLogger(
         save_dir=args.output_dir,
-        project="gator",
         name=args.exp_name,
     )
 
@@ -152,22 +154,11 @@ def main(args: TrainingArguments):
         enable_version_counter=False,
         save_on_exception=True,
     )
-
-    # trainer = Trainer(
-    #     logger=wandb_logger,
-    #     precision=args.precision,
-    #     max_epochs=args.max_epoch,
-    #     accelerator="gpu",
-    #     strategy="ddp",
-    #     devices=args.world_size,
-    #     num_nodes=args.num_nodes,
-    #     callbacks=[model_checkpoint_callback],
-    # )
     
     trainer = Trainer(
         logger=wandb_logger,
         precision=args.precision,
-        max_epochs=args.max_epoch,
+        max_epochs=args.opt_params.max_epoch,
         accelerator="gpu",
         callbacks=[model_checkpoint_callback],
     )
@@ -175,6 +166,7 @@ def main(args: TrainingArguments):
     trainer.fit(
         model=model_wrapped, 
         train_dataloaders=data_loader_train,
+        val_dataloaders=data_loader_eval,
         ckpt_path=latest_ckpt_path,
     )
 

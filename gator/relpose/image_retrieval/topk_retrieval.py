@@ -5,10 +5,10 @@ import os
 from tqdm import tqdm
 from .netvlad import NetVLAD
 from gator.relpose.utils.device import to_numpy
+from gator import logger
 
 
 from pdb import set_trace as bb
-
 
 PREPROCESS_FOLDER = './_db-q_pair_info'
 DB_DESCS_FILE_MASK = '{}_db-descs_step={}.txt'
@@ -27,7 +27,10 @@ class TopkRetrieval:
 
     @torch.no_grad()
     def build_database(self, dataset_db): 
-        db_descs_path = self.db_descs_path_mask.format(dataset_db.scene, self.cfg.db_step)
+        db_descs_path = self.db_descs_path_mask.format(
+            f"{dataset_db.scene}_{dataset_db.split}", 
+            self.cfg.db_step
+        )
         db_descs = []
         if not self.cfg.load_bd_desc:
             for fid in tqdm(range(0, len(dataset_db.names_color), self.cfg.db_step)): 
@@ -37,12 +40,12 @@ class TopkRetrieval:
                 db_descs.append(to_numpy(desc_full.squeeze()))
             db_descs = np.array(db_descs)
             np.savetxt(db_descs_path, db_descs)
-            print('Database descriptors saved to {}.'.format(db_descs_path))
+            logger.info('Database descriptors saved to {}.'.format(db_descs_path))
         else:
             db_descs = np.loadtxt(db_descs_path)
-            print('Database descriptors loaded from {}.'.format(db_descs_path))
+            logger.info('Database descriptors loaded from {}.'.format(db_descs_path))
         self.db_descs = torch.Tensor(db_descs)
-        print('Database: {} images.'.format(len(self.db_descs))) 
+        logger.info('Database: {} images.'.format(len(self.db_descs))) 
 
     @torch.no_grad()
     def retrieve_topk(self, dataset_db, dataset_q):
@@ -62,6 +65,6 @@ class TopkRetrieval:
                 info = {'query_path': f_name, 'db_path':name, 'query_idx':fid, 'db_idx': idx.item()}
                 retrieved.append(info)
             all_retrieved.append(retrieved)
-        print('Query: {} images.'.format(len(all_retrieved)))
+        logger.info('Query: {} images.'.format(len(all_retrieved)))
         return all_retrieved
 
