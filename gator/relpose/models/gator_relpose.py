@@ -29,6 +29,7 @@ class GatorRelpose(nn.Module):
         if freeze:
             for param in self._gator.parameters():
                 param.requires_grad = False
+            self._gator.eval()
 
         # build a head
         self._gator.dec_embed_dim = config.dec_emb_dim

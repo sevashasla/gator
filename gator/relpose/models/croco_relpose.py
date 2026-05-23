@@ -35,6 +35,7 @@ class CroCoNetRelpose(nn.Module):
         if freeze:
             for param in self._croco.parameters():
                 param.requires_grad = False
+            self._croco.eval()
 
         self.pose_head = PoseHead(net=self._croco)
         self.head = transpose_to_landscape(self.pose_head, activate=True)

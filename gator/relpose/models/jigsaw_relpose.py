@@ -34,6 +34,7 @@ class JigsawRelpose(nn.Module):
         if freeze:
             for param in self._jigsaw.parameters():
                 param.requires_grad = False
+            self._jigsaw.eval()
 
         # build a decoder
         dec_pos_embed = get_2d_sincos_pos_embed(

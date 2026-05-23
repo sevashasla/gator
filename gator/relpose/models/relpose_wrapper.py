@@ -6,7 +6,7 @@ from torch import nn
 
 from gator.relpose.loss import RelativeCameraPoseRegression
 from gator.relpose.utils.device import to_numpy
-from gator.relpose.utils.metric import error_auc, get_rot_err, get_transl_ang_err
+from gator.relpose.utils.metric import error_acc, error_auc, get_rot_err, get_transl_ang_err
 from gator.utils import misc
 from gator import logger
 import numpy as np
@@ -118,7 +118,13 @@ class RelposeWrapper(L.LightningModule):
         
         # auc
         auc = error_auc(rerrs, terrs, thresholds=[5, 10, 20])
-        for k, v in auc.items():
+        rra = error_acc(rerrs, thresholds=[5, 10, 20], prefix='rra')
+        rta = error_acc(terrs, thresholds=[5, 10, 20], prefix='rta')
+        mean_rerr = np.median(rerrs)
+        mean_terr = np.median(terrs)
+
+        combined = {**auc, **rra, **rta, "rerr": mean_rerr, "terr": mean_terr}
+        for k, v in combined.items():
             self.log(f"val_{k}", v, sync_dist=True)
 
         self._rerrs_prh.clear()

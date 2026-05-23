@@ -13,12 +13,17 @@ def get_rot_err(rot_a, rot_b):
 
 def get_transl_ang_err(dir_a, dir_b):
     dot_product = np.sum(dir_a * dir_b)
-    cos_angle = dot_product / (np.linalg.norm(dir_a) * np.linalg.norm(dir_b))
+    cos_angle = dot_product / (np.linalg.norm(dir_a) * np.linalg.norm(dir_b) + 1e-8)
     cos_angle = np.clip(cos_angle, -1.0, 1.0)
     angle = np.arccos(cos_angle)
     err = np.degrees(angle)
     return err
 
+def error_acc(err: np.ndarray, thresholds: list[float], prefix='acc'):
+    accs = []
+    for thr in thresholds:
+        accs.append(np.mean(err < thr))
+    return {f'{prefix}@{t}': acc for t, acc in zip(thresholds, accs)}
 
 def error_auc(rError, tErrors, thresholds):
     """
