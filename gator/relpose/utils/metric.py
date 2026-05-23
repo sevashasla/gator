@@ -14,6 +14,7 @@ def get_rot_err(rot_a, rot_b):
 def get_transl_ang_err(dir_a, dir_b):
     dot_product = np.sum(dir_a * dir_b)
     cos_angle = dot_product / (np.linalg.norm(dir_a) * np.linalg.norm(dir_b))
+    cos_angle = np.clip(cos_angle, -1.0, 1.0)
     angle = np.arccos(cos_angle)
     err = np.degrees(angle)
     return err
