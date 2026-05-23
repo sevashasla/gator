@@ -5,6 +5,8 @@ __pycache__/
 
 # C extensions
 *.so
+_db-q_pair_info
+_db-q_pair_info2
 
 # Distribution / packaging
 .Python
