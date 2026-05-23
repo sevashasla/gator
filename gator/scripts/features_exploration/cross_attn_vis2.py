@@ -76,7 +76,7 @@ def main(args: Args):
         .numpy()\
         .astype(np.uint8)
     
-    image_shuref = np.concatenate([image_shu, image_ref], axis=1)
+    image_shuref = np.concatenate([image_shu, image_ref], axis=1).copy()
 
     # (B, num_heads, seq_len, head_dim)
     q, k, _ = torch.load(args.input_folder / args.attention_file, map_location=device)
@@ -91,15 +91,15 @@ def main(args: Args):
     qk = qk.mean(dim=0) # average over heads
 
     # visualize
-    for patch_pos in args.patches_positions:
-        image_shu_copy = image_shu.copy()
-        image_ref_copy = image_ref.copy()
 
-        image_shuref = np.concatenate([image_shu_copy, image_ref_copy], axis=1)
-        image_shu_copy = draw_rectangle(
+    # generate random colors for each line:
+    random_colors = np.random.randint(0, 255, size=(len(args.patches_positions), 3)).tolist()
+
+    for i, patch_pos in enumerate(args.patches_positions):
+        image_shuref = draw_rectangle(
             image_shuref,
             (patch_pos[0], patch_pos[1], 1, 1),
-            line_color=(0, 255, 0)
+            line_color=tuple(random_colors[i])
         )
 
         qk_curr = qk[patch_pos[0] * 14 + patch_pos[1]]
@@ -108,23 +108,24 @@ def main(args: Args):
         image_shuref = draw_rectangle(
             image_shuref,
             (max_idx[0], max_idx[1] + 14, 1, 1),
-            line_color=(0, 255, 0)
+            line_color=tuple(random_colors[i])
         )
 
         image_shuref = draw_connecting_line(
             image_shuref, 
             patch_pos[0], patch_pos[1], 
-            max_idx[0], max_idx[1]
+            max_idx[0], max_idx[1],
+            line_color=tuple(random_colors[i])
         )
 
-        image_shuref = cv2.cvtColor(image_shuref, cv2.COLOR_RGB2BGR)
-        # save
-        name = "image_"
-        name += f"{args.image_index}_patchv2_{patch_pos[0]}_{patch_pos[1]}"
-        cv2.imwrite(
-            str(args.output_dir / f"{name}.png"), 
-            image_shuref
-        )
+    image_shuref = cv2.cvtColor(image_shuref, cv2.COLOR_RGB2BGR)
+    # save
+    name = "image_"
+    name += f"{args.image_index}_patchv2_{'_'.join([f'({p[0]}, {p[1]})' for p in args.patches_positions])}"
+    cv2.imwrite(
+        str(args.output_dir / f"{name}.png"), 
+        image_shuref
+    )
 
 if __name__ == "__main__":
     args = tyro.cli(Args)
