@@ -54,9 +54,9 @@ class OptimizationParameters:
         self.update_lr()
         self.update_steps_per_epoch()
 
-    def update_lr(self):
+    def update_lr(self, force=False):
         eff_batch_size = self.batch_size * self.accum_iter * misc.get_world_size()
-        if self.lr is None:  # only base_lr is specified
+        if self.lr is None or force:  # only base_lr is specified
             self.lr = self.blr * eff_batch_size / 128
         
         logger.info("Updated LR")
@@ -65,8 +65,8 @@ class OptimizationParameters:
         logger.info(f"accumulate grad iterations: {self.accum_iter}")
         logger.info(f"effective batch size: {eff_batch_size}")
 
-    def update_steps_per_epoch(self):
-        if self.steps_per_epoch is None:
+    def update_steps_per_epoch(self, force=False):
+        if self.steps_per_epoch is None or force:
             self.steps_per_epoch = int(self.dataset_size * (1 - self.tt_split_ratio)) // \
                 (self.batch_size * misc.get_world_size())
         

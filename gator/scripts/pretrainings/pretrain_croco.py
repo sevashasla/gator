@@ -69,6 +69,10 @@ class TrainingArgumentsCroco(TrainingArgumentsJigsaw):
         # It is built-it in the Wrapper
         # visualizer = self._get_visualizer()
         model = self._get_model()
+
+        # update it again (idk why it is necessary but we should do this)
+        self.opt_params.update_lr(force=True)
+        self.opt_params.update_steps_per_epoch(force=True)
         
         # wrapper
         model_wrapped = CroCoWrapper(
