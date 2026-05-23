@@ -46,7 +46,7 @@ L21 = L21Loss()
 class Criterion (nn.Module):
     def __init__(self, criterion=None):
         super().__init__()
-        assert isinstance(criterion, LLoss), f'{criterion} is not a proper criterion!'+bb()
+        assert isinstance(criterion, LLoss), f'{criterion} is not a proper criterion!'
         self.criterion = copy(criterion)
 
     def get_name(self):

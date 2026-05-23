@@ -1,4 +1,4 @@
-from matplotlib.path import Path
+from pathlib import Path
 import torch
 import torch.nn as nn
 from gator.models.blocks import DecoderBlock
