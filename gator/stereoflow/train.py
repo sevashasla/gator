@@ -167,7 +167,11 @@ def main(args):
             gator_config = dataclass_replace(gator_config, **overrides)
         print(f'OneView ({args.model}) backbone: GatorDownstreamBinocular with ' + str(gator_config))
         args.gator_config = gator_config  # saved for test time
-        model = GatorDownstreamBinocular(head, gator_config, img_size=(args.crop[0], args.crop[1]))
+        # jigsaw_1view was pretrained with use_rope=False and a _no_pos_emb bias on every
+        # patch token; replicate that distribution during finetuning.
+        is_jigsaw = (args.model == 'jigsaw_1view')
+        model = GatorDownstreamBinocular(head, gator_config, img_size=(args.crop[0], args.crop[1]),
+                                         use_rope=not is_jigsaw, apply_no_pos_emb=is_jigsaw)
         oneview_state_dict = load_oneview_state_dict(ckpt)
         msg = model.load_state_dict(oneview_state_dict, strict=False)
         unexpected = msg.unexpected_keys
@@ -175,7 +179,7 @@ def main(args):
         # _no_pos_emb and _register_tokens may legitimately be absent from some
         # pretrained checkpoints (e.g. MAE has no _no_pos_emb).
         core_missing = [k for k in msg.missing_keys
-                        if k.startswith('_encoder_blocks') or k.startswith('_patch_embed') or k == '_enc_norm']
+                        if k.startswith('_encoder_blocks') or k.startswith('_patch_embed') or k.startswith('_enc_norm')]
         if unexpected:
             raise RuntimeError(f'Unexpected keys when loading oneview encoder (bug in load_oneview_state_dict): {unexpected}')
         if core_missing:

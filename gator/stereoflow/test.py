@@ -72,7 +72,9 @@ def _load_model_and_criterion(model_path, do_load_metrics, device):
         model = GatorDownstreamBinocular(head, ckpt_args.gator_config, img_size=tuple(ckpt_args.crop))
     else:  # mae or jigsaw_1view
         print(f'oneview ({model_type}) gator_config:', ckpt_args.gator_config)
-        model = GatorDownstreamBinocular(head, ckpt_args.gator_config, img_size=tuple(ckpt_args.crop))
+        is_jigsaw = (model_type == 'jigsaw_1view')
+        model = GatorDownstreamBinocular(head, ckpt_args.gator_config, img_size=tuple(ckpt_args.crop),
+                                         use_rope=not is_jigsaw, apply_no_pos_emb=is_jigsaw)
     msg = model.load_state_dict(ckpt['model'], strict=True)
     model.eval()
     model = model.to(device)

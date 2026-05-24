@@ -24,7 +24,8 @@ class GatorDownstreamBinocular(nn.Module):
     - PatchEmbed is rebuilt for the target crop size
     """
 
-    def __init__(self, head, config: GatorConfig, img_size=(224, 224)):
+    def __init__(self, head, config: GatorConfig, img_size=(224, 224),
+                 use_rope: bool = True, apply_no_pos_emb: bool = False):
         super().__init__()
 
         # CroCo-compatible attribute names required by PixelwiseTaskWithDPT.setup()
@@ -35,6 +36,8 @@ class GatorDownstreamBinocular(nn.Module):
         self.dec_blocks = True  # tells the head that an encoder+decoder architecture exists
         self.num_register_tokens = config.num_register_tokens
         self._config = config
+        self._use_rope = use_rope
+        self._apply_no_pos_emb = apply_no_pos_emb
 
         # Patch embedding rebuilt for the target crop size
         # Conv2d weights are identical to pretrained; only img_size assertion changes.
@@ -113,6 +116,9 @@ class GatorDownstreamBinocular(nn.Module):
         x, pos = self._patch_embed(img)  # (B, N, D), (B, N, 2)
         B = x.size(0)
 
+        if self._apply_no_pos_emb:
+            x = x + self._no_pos_emb
+
         # Prepend register tokens (same as pretraining)
         reg = self._register_tokens.expand(B, -1, -1)
         x = torch.cat([reg, x], dim=1)
@@ -126,14 +132,14 @@ class GatorDownstreamBinocular(nn.Module):
         if return_all_blocks:
             patch_layers = []
             for block in self._encoder_blocks:
-                x = block(x, xpos=pos, use_rope=True)
+                x = block(x, xpos=pos, use_rope=self._use_rope)
                 patch_layers.append(x[:, self.num_register_tokens:, :])
             x = self._enc_norm(x)
             patch_layers[-1] = x[:, self.num_register_tokens:, :]
             return patch_layers, x
         else:
             for block in self._encoder_blocks:
-                x = block(x, xpos=pos, use_rope=True)
+                x = block(x, xpos=pos, use_rope=self._use_rope)
             x = self._enc_norm(x)
             return x
 
