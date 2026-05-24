@@ -121,4 +121,6 @@ class GatorWrapper(Jigsaw1ViewWrapper):
             )
 
         return loss
-    
+
+    def test_step(self, batch, batch_idx):
+        return Jigsaw1ViewWrapper.test_step(self, batch, batch_idx)

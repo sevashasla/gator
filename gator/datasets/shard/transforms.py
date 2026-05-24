@@ -32,6 +32,12 @@ class RandomCropPair(T.RandomCrop):
         img1 = super().forward(img1)
         img2 = super().forward(img2)
         return img1, img2
+    
+class ResizePair(T.Resize):
+    def forward(self, img1, img2):
+        img1 = super().forward(img1)
+        img2 = super().forward(img2)
+        return img1, img2
 
 class ColorJitterPair(T.ColorJitter): 
     # can be symmetric (same for both images) or assymetric (different jitter params for each image) depending on assymetric_prob  
@@ -55,6 +61,9 @@ def get_pair_transforms_gator(transform_str):
         if s.startswith('crop'):
             size = int(s[len('crop'):])
             trfs.append(RandomCropPair(size))
+        elif s.startswith('resize'):
+            size = int(s[len('resize'):])
+            trfs.append(ResizePair(size))
         elif s=='acolor':
             trfs.append(ColorJitterPair(assymetric_prob=1.0, brightness=(0.6, 1.4), contrast=(0.6, 1.4), saturation=(0.6, 1.4), hue=0.0))
         elif s=="norm":
