@@ -1,6 +1,7 @@
 import torch
 import tyro
 from dataclasses import dataclass
+from pathlib import Path
 
 from gator.models.mae_1view.model_mae import MAEConfig
 from gator.relpose.models.mae_relpose import MAERelpose
@@ -14,6 +15,7 @@ class FinetuningArgumentsMAE(FinetuningArgumentsBase):
     """
 
     model_config: MAEConfig
+    output_dir: Path = Path('/scratch/izar/bosi/gator/relpose/')
 
     def _get_model(self) -> torch.nn.Module:
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
