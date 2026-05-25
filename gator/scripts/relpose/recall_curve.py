@@ -12,10 +12,11 @@ What this does:
 
 Usage:
   python -m gator.scripts.relpose.recall_curve \
-    --ckpts gator:/path/to/gator/last.ckpt \
-            croco:/scratch/izar/bosi/gator/relpose/croco-small-48hrs-lr-1e-6-nf/checkpoints/last.ckpt \
-            mae:/scratch/izar/bosi/gator/relpose/mae-small-unfrozen-blr3e5/checkpoints/last.ckpt \
-            jigsaw:/scratch/izar/bosi/gator/relpose/jigsaw-small-24hrs-lr-1e-5-nf/checkpoints/last.ckpt \
+    --ckpts \
+      gator:/scratch/izar/skorokho/gator/relpose/gator-small-000-nf/checkpoints/last.ckpt \
+      croco:/scratch/izar/bosi/gator/relpose/croco-small-48hrs-lr-1e-6-nf/checkpoints/last.ckpt \
+      mae:/scratch/izar/bosi/gator/relpose/mae-small-unfrozen-blr3e5/checkpoints/last.ckpt \
+      jigsaw:/scratch/izar/bosi/gator/relpose/jigsaw-small-24hrs-lr-1e-5-nf/checkpoints/last.ckpt \
     --out visuals/relpose/recall_curve.png
 """
 
@@ -51,15 +52,6 @@ def _load_croco(cfg, device):
     )
     return eval(expr).to(device)
 
-def _load_jigsaw(cfg, device):
-    from gator.models.gator_2view.model_gator import GatorConfig
-    from gator.relpose.models.jigsaw_relpose import JigsawRelpose
-    model = JigsawRelpose(
-        config=GatorConfig(**cfg['model_config']),
-        jigsaw_ckpt_path=cfg['inner_model_ckpt_path'],
-        freeze=cfg.get('freeze_encdec', True),
-    )
-    return model.to(device)
 
 def _load_mae(cfg, device):
     from gator.models.mae_1view.model_mae import MAEConfig
@@ -71,6 +63,18 @@ def _load_mae(cfg, device):
     )
     return model.to(device)
 
+
+def _load_jigsaw(cfg, device):
+    from gator.models.gator_2view.model_gator import GatorConfig
+    from gator.relpose.models.jigsaw_relpose import JigsawRelpose
+    model = JigsawRelpose(
+        config=GatorConfig(**cfg['model_config']),
+        jigsaw_ckpt_path=cfg['inner_model_ckpt_path'],
+        freeze=cfg.get('freeze_encdec', True),
+    )
+    return model.to(device)
+
+
 def _load_gator(cfg, device):
     from gator.relpose.models.gator_relpose import GatorRelpose
     from gator.models.gator_2view.model_gator import GatorConfig
@@ -80,6 +84,7 @@ def _load_gator(cfg, device):
         freeze=cfg.get('freeze_encdec', True),
     )
     return model.to(device)
+
 
 def build_wrapper(cfg, ckpt_path, device):
     exp_name = cfg.get('exp_name', '')
@@ -177,9 +182,8 @@ def plot_recall_curves(results: dict[str, tuple], out: Path, max_threshold=20):
     results: {label: (rerrs, terrs)}
     """
     fig, ax = plt.subplots(figsize=(7, 5))
-
-    # collect AUC rows for the table below
-    table_rows = []
+    fig.patch.set_facecolor('white')
+    ax.set_facecolor('white')
 
     for i, (label, (rerrs, terrs)) in enumerate(results.items()):
         color = PALETTE.get(label.lower(), DEFAULT_COLORS[i % len(DEFAULT_COLORS)])
@@ -191,45 +195,25 @@ def plot_recall_curves(results: dict[str, tuple], out: Path, max_threshold=20):
         auc20 = aucs['auc@20'] * 100
 
         display = label.upper() if label.lower() == 'mae' else label.capitalize()
-        ax.plot(thresholds, recall * 100, label=display, color=color, lw=2.5)
-        table_rows.append((display, color, auc5, auc10, auc20))
+        legend_label = f'{display}   AUC@5={auc5:.1f}  @10={auc10:.1f}  @20={auc20:.1f}'
+        ax.plot(thresholds, recall * 100, label=legend_label, color=color, lw=2.5, zorder=3)
+        ax.fill_between(thresholds, recall * 100, alpha=0.12, color=color, zorder=2)
 
-    # threshold markers — just tick labels, no vertical lines
     ax.set_xticks([0, 5, 10, 15, 20])
-
     ax.set_xlabel('Error threshold (degrees)', fontsize=12)
     ax.set_ylabel('Correctly estimated pairs (%)', fontsize=12)
     ax.set_xlim(0, max_threshold)
     ax.set_ylim(0, 100)
     ax.spines['top'].set_visible(False)
     ax.spines['right'].set_visible(False)
-    ax.set_title('Pose Recall Curve — 7-Scenes', fontsize=13, pad=10)
+    ax.spines['left'].set_color('#cccccc')
+    ax.spines['bottom'].set_color('#cccccc')
+    ax.tick_params(colors='#555555')
+    ax.xaxis.label.set_color('#333333')
+    ax.yaxis.label.set_color('#333333')
+    ax.set_title('Pose Recall Curve — 7-Scenes', fontsize=13, pad=12, color='#222222')
 
-    # legend outside, below the plot — never overlaps curves
-    ax.legend(loc='upper center', bbox_to_anchor=(0.5, -0.18),
-              ncol=len(results), fontsize=11, frameon=False)
-
-    # AUC table below legend
-    col_labels = ['Model', 'AUC@5', 'AUC@10', 'AUC@20']
-    table_data = [[r[0], f'{r[2]:.1f}', f'{r[3]:.1f}', f'{r[4]:.1f}']
-                  for r in table_rows]
-    tbl = ax.table(
-        cellText=table_data, colLabels=col_labels,
-        cellLoc='center', loc='bottom',
-        bbox=[0, -0.55, 1, 0.28],
-    )
-    tbl.auto_set_font_size(False)
-    tbl.set_fontsize(10)
-    for (row, col), cell in tbl.get_celld().items():
-        cell.set_edgecolor('#cccccc')
-        if row == 0:
-            cell.set_facecolor('#f0f0f0')
-            cell.set_text_props(fontweight='bold')
-        elif col == 0:
-            # color the model name cell
-            cell.set_text_props(color=table_rows[row - 1][1], fontweight='bold')
-        else:
-            cell.set_facecolor('white')
+    ax.legend(loc='upper left', fontsize=10, frameon=False)
 
     plt.tight_layout()
     plt.savefig(out, dpi=150, bbox_inches='tight')

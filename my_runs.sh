@@ -1,5 +1,5 @@
 # ── Checkpoint directories ────────────────────────────────────────────────────
-# CKPT_GATOR=   /scratch/izar/.../checkpoints                          # TODO: add path
+# CKPT_GATOR=/scratch/izar/skorokho/gator/relpose/gator-small-000-nf/checkpoints
 # CKPT_CROCO_48HRS=/scratch/izar/bosi/gator/relpose/croco-small-48hrs-lr-1e-6-nf/checkpoints
 # CKPT_CROCO_24HRS=/scratch/izar/bosi/gator/relpose/croco-small-24hrs-lr-1e-6-nf/checkpoints
 # CKPT_JIGSAW=/scratch/izar/bosi/gator/relpose/jigsaw-small-24hrs-lr-1e-5-nf/checkpoints
@@ -19,27 +19,27 @@
 #   --out visuals/relpose/recall_curve.png
 #
 # 2. FRUSTUM QUALITATIVE — image pairs + camera frustums
-#    --sort_by: best_terr (lowest error, success cases) | best_rerr | terr | rerr | random
+#    --sort_by: random (default, most neutral) | best (lowest max(rerr,terr)) | best_terr | best_rerr | terr | rerr
 #    --scene:   chess | fire | heads | office | pumpkin | redkitchen | stairs
 #
 # python -m gator.scripts.relpose.visualize_relpose \
 #   --ckpt $CKPT_GATOR/last.ckpt --model_name "Gator" \
-#   --scene chess --n_samples 6 --sort_by best_terr \
+#   --scene chess --n_samples 6 --sort_by random \
 #   --out visuals/relpose/gator_chess_best.png
 #
 # python -m gator.scripts.relpose.visualize_relpose \
 #   --ckpt $CKPT_CROCO_48HRS/last.ckpt --model_name "CroCo" \
-#   --scene chess --n_samples 6 --sort_by best_terr \
+#   --scene chess --n_samples 6 --sort_by random \
 #   --out visuals/relpose/croco_chess_best.png
 #
 # python -m gator.scripts.relpose.visualize_relpose \
 #   --ckpt $CKPT_MAE/last.ckpt --model_name "MAE" \
-#   --scene chess --n_samples 6 --sort_by best_terr \
+#   --scene chess --n_samples 6 --sort_by random \
 #   --out visuals/relpose/mae_chess_best.png
 #
 # python -m gator.scripts.relpose.visualize_relpose \
 #   --ckpt $CKPT_JIGSAW/last.ckpt --model_name "Jigsaw" \
-#   --scene chess --n_samples 6 --sort_by best_terr \
+#   --scene chess --n_samples 6 --sort_by random \
 #   --out visuals/relpose/jigsaw_chess_best.png
 # ─────────────────────────────────────────────────────────────────────────────
 

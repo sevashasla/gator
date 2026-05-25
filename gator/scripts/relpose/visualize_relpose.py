@@ -3,36 +3,50 @@ Visualize relative pose estimation: image pairs + camera frustums (pred vs GT).
 
 What this does:
   - Loads a trained model checkpoint
-  - Samples n_samples*3 pairs from the 7-Scenes test set (pairs are fixed,
-    pre-computed via NetVLAD retrieval: each test query is paired with its
-    most similar training image)
-  - Runs model inference on those pairs
-  - Shows the n_samples with lowest error (sort_by=best_terr) or highest (sort_by=terr)
-  - For each pair: the two images + 3 camera frustums (green=ref, orange=GT, red=predicted)
-  - Errors shown are prediction errors vs ground truth (0° = perfect)
+  - Randomly samples n_samples pairs from the 7-Scenes test set (pairs are
+    pre-computed via NetVLAD retrieval: each test query paired with its most
+    similar training image)
+  - Runs inference and shows: reference image, query image, 3D camera frustums
+  - Frustum colors: green = reference camera, orange = GT camera 2, red = predicted
+  - Errors shown: rotation and translation direction angular errors in degrees
+
+Slide caption:
+  "Qualitative results on 7-Scenes (chess scene). Random pairs from the test set.
+   Green: reference camera. Orange: ground truth camera 2. Red: predicted camera 2.
+   Errors are rotation and translation direction angular errors in degrees."
 
 Usage:
   python -m gator.scripts.relpose.visualize_relpose \
     --ckpt <run_dir>/checkpoints/last.ckpt \
     --scene <chess|fire|heads|office|pumpkin|redkitchen|stairs> \
     --n_samples <int>          # number of pairs to show (default: 6)
-    --sort_by <best_terr|best_rerr|terr|rerr|random>
-                               # best_terr/best_rerr = lowest error first (success cases, default: best_terr)
+    --sort_by <random|best|best_terr|best_rerr|terr|rerr>
+                               # random = random samples, most neutral (default)
+                               # best = lowest max(rerr, terr) — official recall metric
+                               # best_terr/best_rerr = lowest individual angular error first
                                # terr/rerr = highest error first (failure cases)
-    --out visuals/relpose/<model>_<scene>_<sort>.png
+    --out visuals/relpose/<model>_<scene>.png
 
 Examples:
-  # MAE on chess, best (lowest) translation errors — success cases for presentation
   python -m gator.scripts.relpose.visualize_relpose \
-    --ckpt /scratch/izar/bosi/gator/relpose/mae-small-unfrozen-blr3e5/checkpoints/last.ckpt \
-    --scene chess --n_samples 6 --sort_by best_terr \
-    --out visuals/relpose/mae_chess_best.png
+    --ckpt /scratch/izar/skorokho/gator/relpose/gator-small-000-nf/checkpoints/last.ckpt \
+    --model_name "Gator" --scene chess --n_samples 6 \
+    --out visuals/relpose/gator_chess.png
 
-  # CroCo on fire, worst rotation errors — failure case analysis
   python -m gator.scripts.relpose.visualize_relpose \
     --ckpt /scratch/izar/bosi/gator/relpose/croco-small-48hrs-lr-1e-6-nf/checkpoints/last.ckpt \
-    --scene fire --n_samples 6 --sort_by rerr \
-    --out visuals/relpose/croco_fire_rerr.png
+    --model_name "CroCo" --scene chess --n_samples 6 \
+    --out visuals/relpose/croco_chess.png
+
+  python -m gator.scripts.relpose.visualize_relpose \
+    --ckpt /scratch/izar/bosi/gator/relpose/mae-small-unfrozen-blr3e5/checkpoints/last.ckpt \
+    --model_name "MAE" --scene chess --n_samples 6 \
+    --out visuals/relpose/mae_chess.png
+
+  python -m gator.scripts.relpose.visualize_relpose \
+    --ckpt /scratch/izar/bosi/gator/relpose/jigsaw-small-24hrs-lr-1e-5-nf/checkpoints/last.ckpt \
+    --model_name "Jigsaw" --scene chess --n_samples 6 \
+    --out visuals/relpose/jigsaw_chess.png
 """
 
 import argparse
@@ -156,9 +170,12 @@ def parse_args():
                    help='7-Scenes scene name (default: chess)')
     p.add_argument('--n_samples', type=int, default=6,
                    help='Number of pairs to visualize')
-    p.add_argument('--sort_by', choices=['terr', 'rerr', 'best_terr', 'best_rerr', 'random'], default='best_terr',
-                   help='How to pick samples: best_terr/best_rerr = lowest error first (success cases), '
-                        'terr/rerr = highest error first (failure cases), random = no sorting')
+    p.add_argument('--sort_by', choices=['best', 'best_terr', 'best_rerr', 'terr', 'rerr', 'random'],
+                   default='random',
+                   help='How to pick samples: random = random samples (default, most neutral), '
+                        'best = lowest max(rerr, terr) first (official recall metric), '
+                        'best_terr/best_rerr = lowest individual error first, '
+                        'terr/rerr = highest error first (failure cases)')
     p.add_argument('--out', type=Path, default=Path('relpose_vis.png'))
     p.add_argument('--model_name', type=str, default=None,
                    help='Display name for the model (e.g. "CroCo", "MAE"). '
@@ -200,7 +217,7 @@ def main():
     samples = []
     with torch.no_grad():
         for batch in loader:
-            if len(samples) >= args.n_samples * 3:  # collect extra, filter later
+            if len(samples) >= args.n_samples * 3:
                 break
             view1, view2 = batch
             for v in (view1, view2):
@@ -208,7 +225,7 @@ def main():
                     if k in v:
                         v[k] = v[k].to(device)
 
-            pose12, pose21 = wrapper(view1, view2)
+            _, pose21 = wrapper(view1, view2)
 
             pred = to_numpy(pose21['pose'][0])   # (4,4) pred pose cam2→cam1
             gt_pose2to1 = torch.inverse(view1['camera_pose']) @ view2['camera_pose']
@@ -232,12 +249,14 @@ def main():
                 'terr': terr,
             })
 
-    if args.sort_by == 'best_terr':
-        samples.sort(key=lambda x: x['terr'])           # lowest error first
+    if args.sort_by == 'best':
+        samples.sort(key=lambda x: max(x['rerr'], x['terr']))   # official recall metric
+    elif args.sort_by == 'best_terr':
+        samples.sort(key=lambda x: x['terr'])
     elif args.sort_by == 'best_rerr':
         samples.sort(key=lambda x: x['rerr'])
     elif args.sort_by == 'terr':
-        samples.sort(key=lambda x: x['terr'], reverse=True)   # failure cases
+        samples.sort(key=lambda x: x['terr'], reverse=True)
     elif args.sort_by == 'rerr':
         samples.sort(key=lambda x: x['rerr'], reverse=True)
 
