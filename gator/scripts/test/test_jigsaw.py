@@ -15,7 +15,7 @@ class TestArgumentsJigsaw(TrainingArgumentsJigsaw):
     """
 
     ckpt_path: Path
-    output_path: Path | None
+    output_path: Path | None = None
 
     def __post_init__(self):
         if self.output_path is None:

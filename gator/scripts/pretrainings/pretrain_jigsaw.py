@@ -36,8 +36,8 @@ class TrainingArgumentsJigsaw(TrainingArgumentsBase):
         return get_pair_transforms_gator(self.transforms)
 
     def _get_eval_transform(self) -> T.Transform:
-        return get_pair_transforms_gator("resize224")
-    
+        return get_pair_transforms_gator("resize224" + ("+norm" if "norm" in self.transforms else ""))
+
     def get_dataloaders(self) -> tuple[torch.utils.data.DataLoader, torch.utils.data.DataLoader]:
         ## training dataset and loader 
         # normalization is done in the gator model itself
