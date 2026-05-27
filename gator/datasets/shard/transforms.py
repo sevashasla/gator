@@ -19,7 +19,10 @@ class NormalizeBoth(T.Normalize):
 class ToTensorBoth(T.Transform):
     def __init__(self):
         super().__init__()
-        self.tf = T.ToDtype(torch.float32, scale=True)
+        self.tf = T.Compose([
+            T.ToImage(),
+            T.ToDtype(torch.float32, scale=True),
+        ])
 
     def __call__(self, img1, img2):
         img1 = self.tf(img1)
