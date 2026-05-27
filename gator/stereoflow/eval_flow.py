@@ -5,9 +5,11 @@ Supports both CroCo and Gator checkpoints (auto-detected from saved args).
 Usage:
     python stereoflow/eval_flow.py \\
         --model checkpoints/run/checkpoint-best.pth \\
-        --split test_cleanpass \\
+        --split subval_cleanpass \\
+        [--scene temple_2]     restrict to one scene/sequence \\
         [--save]               save flow images alongside metrics \\
-        [--save_dir DIR]       output directory (default: <model>_sintel_<split>) \\
+        [--save_dir DIR]       output directory (default: <model_stem>_sintel_<split>) \\
+        [--comparison]         save 4-panel figure (img | pred | gt | EPE) \\
         [--max_pairs N]        stop after N pairs (default: all) \\
         [--tile_overlap 0.7]
         [--num_workers 4]
@@ -15,19 +17,29 @@ Usage:
 Available splits:
     train_cleanpass  / train_finalpass  / train_allpass
     subtrain_cleanpass / subtrain_finalpass
-    subval_cleanpass / subval_finalpass
+    subval_cleanpass / subval_finalpass      ← ground truth available
     test_cleanpass   / test_finalpass   / test_allpass
 
-For train/subval splits (ground truth available):
-    EPE, L1err, bad@{0.5,1,3,5}px and per-speed-bin EPE are printed.
+For train/subval/subtrain splits (ground truth available):
+    Overall EPE and per-scene EPE are printed.
     An EPE heatmap is saved next to the flow image when --save is set.
 
 For test splits (no ground truth): only flow colour images are saved.
 
-python stereoflow/eval_flow.py --model checkpoints/gator_ft_flow_2872508/checkpoint-best.pth --split subval_cleanpass --max_pairs 10 --save
+Scene names for subval:  temple_2  temple_3
+Scene names for train:   alley_1  alley_2  ambush_2  ambush_4  ambush_5  ambush_6
+                         bamboo_1  bamboo_2  bandage_1  bandage_2  cave_2  cave_4
+                         market_2  market_5  market_6  mountain_1  shaman_2  shaman_3
+                         sleeping_1  sleeping_2  temple_2  temple_3
+
+Example:
+    python stereoflow/eval_flow.py \\
+        --model checkpoints/gator_ft_flow_2872508/checkpoint-best.pth \\
+        --split subval_cleanpass --scene temple_2 --save
 """
 
 import argparse
+import collections
 import os
 import sys
 from pathlib import Path
@@ -157,8 +169,11 @@ def main():
     )
     parser.add_argument("--model", required=True,
                         help="Path to finetuned checkpoint (.pth)")
-    parser.add_argument("--split", default="test_cleanpass",
-                        help="MPISintel split (e.g. test_cleanpass, subval_finalpass)")
+    parser.add_argument("--split", default="subval_cleanpass",
+                        help="MPISintel split (e.g. subval_cleanpass, test_cleanpass)")
+    parser.add_argument("--scene", default=None,
+                        help="Restrict evaluation to a single scene/sequence "
+                             "(e.g. temple_2). Must match the sequence folder name.")
     parser.add_argument("--save", action="store_true",
                         help="Save flow colour images (and EPE maps when GT available)")
     parser.add_argument("--save_dir", default=None,
@@ -183,9 +198,26 @@ def main():
     print(f"  crop={crop}  tile_conf_mode={tile_conf_mode}  with_conf={with_conf}")
 
     # --- load dataset ---
+    # GT is available for all non-test splits (train, subtrain, subval).
     has_gt = not args.split.startswith("test")
     print(f"\nLoading MPISintel split='{args.split}'  (GT available: {has_gt})")
     dataset = MPISintelDataset(split=args.split)
+
+    # Filter to a single scene if requested.
+    if args.scene is not None:
+        before = len(dataset.pairnames)
+        dataset.pairnames = [
+            p for p in dataset.pairnames
+            if os.path.basename(p[0]) == args.scene
+        ]
+        after = len(dataset.pairnames)
+        if after == 0:
+            print(f"ERROR: scene '{args.scene}' not found in split '{args.split}'.")
+            print("Available scenes:", sorted({os.path.basename(p[0]) for p in
+                  MPISintelDataset(split=args.split).pairnames}))
+            sys.exit(1)
+        print(f"Scene filter '{args.scene}': {before} → {after} pairs")
+
     print(repr(dataset))
     loader = DataLoader(
         dataset, batch_size=1, shuffle=False,
@@ -202,6 +234,8 @@ def main():
     # --- metrics ---
     metrics = FlowDatasetMetrics().to(device)
     metrics.reset()
+    # Per-scene EPE accumulator: {scene_name: [epe_values]}
+    scene_epe: dict[str, list[float]] = collections.defaultdict(list)
 
     # --- inference loop ---
     total = len(loader) if args.max_pairs is None else min(args.max_pairs, len(loader))
@@ -227,6 +261,17 @@ def main():
 
         if has_gt and gt_dev is not None:
             metrics.add_batch(pred, gt_dev)
+            # Accumulate per-scene EPE (mean over valid pixels for this pair).
+            pairname = pairnames[0]
+            pairname_t = eval(pairname) if pairname.startswith("(") else pairname
+            scene = os.path.basename(pairname_t[0])
+            pred_np = pred[0].permute(1, 2, 0).cpu().numpy()
+            gt_np   = gt[0].permute(1, 2, 0).cpu().numpy()
+            valid   = np.all(np.isfinite(gt_np), axis=-1)
+            if valid.any():
+                epe = np.sqrt(np.sum((pred_np - gt_np) ** 2, axis=-1))
+                scene_epe[scene].append(float(epe[valid].mean()))
+
 
         if not args.save:
             continue
@@ -283,6 +328,16 @@ def main():
         print("-" * (col_w + 10))
         for k, v in results.items():
             print(f"{k:<{col_w}} {v:.4f}")
+
+        if scene_epe:
+            print()
+            print("Per-scene EPE:")
+            scene_col_w = max(len(s) for s in scene_epe) + 2
+            print(f"  {'Scene':<{scene_col_w}} EPE (mean over pairs)")
+            print("  " + "-" * (scene_col_w + 22))
+            for scene in sorted(scene_epe):
+                vals = scene_epe[scene]
+                print(f"  {scene:<{scene_col_w}} {np.mean(vals):.4f}  ({len(vals)} pairs)")
 
     if args.save:
         print(f"\nResults saved to: {save_dir}")
