@@ -19,7 +19,7 @@ from torchmetrics import Accuracy
 @dataclass(kw_only=True)
 class ArgumentsGator(TrainingArgumentsGator):
     ckpt_path: Path
-    dataset_config_path: Path
+    dataset_config_path: Path = Path("./docs/diffusion_editing/twoview_check.yml")
 
     def get_wrapper(self):
         criterion = self._get_loss()
@@ -122,7 +122,7 @@ def check_multiview_gator(params: ArgumentsGator):
     # read dataset
     dataset = TwinDataset(
         args.dataset_config_path,
-        transforms_pair=args._get_transforms(),
+        transforms_pair=args._get_eval_transform(),
     )
     print("Length:", len(dataset))
     dataloader = torch.utils.data.DataLoader(
@@ -157,15 +157,15 @@ def check_multiview_gator(params: ArgumentsGator):
                     shuffle_ratio=1.0
                 )
 
-        for i in range(b[0].shape[0]):
-            ids_of_interest1_flat = ids_of_interest1[i][:, 0] * num_patches + ids_of_interest1[i][:, 1] # (B, N)
+        for j in range(b[0].shape[0]):
+            ids_of_interest1_flat = ids_of_interest1[j][:, 0] * num_patches + ids_of_interest1[j][:, 1] # (B, N)
             ids_of_interest1_flat = ids_of_interest1_flat.to(device)
-            ids_of_interest2_flat = ids_of_interest2[i][:, 0] * num_patches + ids_of_interest2[i][:, 1] # (B, N)
+            ids_of_interest2_flat = ids_of_interest2[j][:, 0] * num_patches + ids_of_interest2[j][:, 1] # (B, N)
             ids_of_interest2_flat = ids_of_interest2_flat.to(device)
 
-            pred12 = out12[i, num_register_tokens:, :].argmax(dim=-1) # (B, N)
+            pred12 = out12[j, num_register_tokens:, :].argmax(dim=-1) # (B, N)
             pred12 = pred12[ids_of_interest1_flat] # (B, N1)
-            pred21 = out21[i, num_register_tokens:, :].argmax(dim=-1) # (B, N)
+            pred21 = out21[j, num_register_tokens:, :].argmax(dim=-1) # (B, N)
             pred21 = pred21[ids_of_interest2_flat] # (B, N2)
 
             # pick the ids of interest
@@ -211,12 +211,13 @@ def check_multiview_gator(params: ArgumentsGator):
         print("images_exp.shape:", images_exp.shape)
 
         images_exp[:, :, B*W] = 0.0 # make a black separating line
-        torchvision.utils.save_image(images_exp, args.output_dir / f"exp_{i}.png")
-
-        
+        torchvision.utils.save_image(images_exp, args.output_dir / f"twin_images_{i:03}.png")
 
     accuracy = accuracy_calculator.compute()
     logger.info(f"Accuracy: {accuracy:.4f}")
+
+    with open(args.output_dir / "twin_images_accuracy.txt", "w") as f:
+        f.write(f"Accuracy: {accuracy:.4f}\n")
 
 
 if __name__ == '__main__':

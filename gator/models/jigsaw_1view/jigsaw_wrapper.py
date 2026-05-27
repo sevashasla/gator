@@ -12,6 +12,7 @@ from gator import logger
 from transformers import get_cosine_schedule_with_warmup
 from torchmetrics import Accuracy
 import torchvision.transforms.v2.functional as TF
+import torch.nn.functional as F
 
 @dataclass
 class OptimizationParameters:
@@ -222,6 +223,48 @@ class Jigsaw1ViewWrapper(L.LightningModule):
                 num_register_tokens=num_register_tokens,
                 num_random=8,
             )
+
+        return loss
+
+    def test_step(self, batch, batch_idx):
+        batch = torch.stack(batch, dim=1) # (B, 2, C, H, W)
+        
+        out, gt_pos, num_register_tokens = self.forward(
+            batch, 
+            shuffle_ratio=1.0,
+        )
+
+        # compute and log validation loss
+        loss = self._loss_fn.forward(
+            pred=out, 
+            gt_pos=gt_pos, 
+            gt_image=batch[:, 0, :, :, :],
+            num_register_tokens=num_register_tokens,
+        )
+        self.log("test_loss", loss, on_step=False, on_epoch=True, sync_dist=True)
+
+        # compute and log accuracy
+        if out.shape[-1] != self._grid_size[0] * self._grid_size[1]:
+            pred_ids = self.distance_based_to_idx(out, num_register_tokens) # (B, N1)
+        else:
+            pred_ids = out[:, num_register_tokens:, :].argmax(dim=-1) # (B, N1)
+            
+        gt_ids_flat = gt_pos[:, :, 0] * self._grid_size[1] + gt_pos[:, :, 1] # (B, N1)
+        self._acc.update(pred_ids, gt_ids_flat)
+        acc_value = self._acc.compute()
+        self.log("test_acc", acc_value, on_step=False, on_epoch=True, sync_dist=True)
+        self._acc.reset()
+
+        # create images
+        images_pred = self._visualizer.forward(
+            pred=out, 
+            gt_pos=gt_pos,
+            gt_image=batch[:, 0, :, :, :],
+            num_register_tokens=num_register_tokens,
+        )
+
+        mse = F.mse_loss(images_pred, batch[:, 0, :, :, :])
+        self.log("test_mse", mse, on_step=False, on_epoch=True, sync_dist=True)
 
         return loss
     

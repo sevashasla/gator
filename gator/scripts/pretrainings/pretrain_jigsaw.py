@@ -34,11 +34,15 @@ class TrainingArgumentsJigsaw(TrainingArgumentsBase):
 
     def _get_transforms(self) -> T.Transform:
         return get_pair_transforms_gator(self.transforms)
-    
+
+    def _get_eval_transform(self) -> T.Transform:
+        return get_pair_transforms_gator("resize224" + ("+norm" if "norm" in self.transforms else ""))
+
     def get_dataloaders(self) -> tuple[torch.utils.data.DataLoader, torch.utils.data.DataLoader]:
         ## training dataset and loader 
         # normalization is done in the gator model itself
         transform = self._get_transforms()
+        eval_transform = self._get_eval_transform()
 
         logger.info('Building dataset for {:s} with transforms {:s}'.format(self.dataset, self.transforms))
 
@@ -73,7 +77,7 @@ class TrainingArgumentsJigsaw(TrainingArgumentsBase):
             .decode("torchrgb8")\
             .rename(im1="im1.jpg", im2="im2.jpg")\
             .to_tuple("im1", "im2")\
-            .map(lambda x: transform(x[0], x[1]))\
+            .map(lambda x: eval_transform(x[0], x[1]))\
             .batched(self.opt_params.batch_size, partial=False)
 
 
