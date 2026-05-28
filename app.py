@@ -15,9 +15,10 @@ from gator.models.gator_visualizer.classification import ClassificationVis
 from gator.models.jigsaw_1view.jigsaw_wrapper import OptimizationParameters
 from gator.scripts.show.show_gator import shuffle_patches
 
+_current_dir = Path(__file__).parent
+
 class GatorGradioDemo:
     def __init__(self):
-        self._current_dir = Path(__file__).parent
         self._config = GatorConfig(
             enc_emb_dim=384,
             enc_num_heads=6,
@@ -25,7 +26,7 @@ class GatorGradioDemo:
             dec_num_heads=6,
         )
 
-        self._checkpoint_path = self._current_dir / "../checkpoints/gator-small-classification.ckpt"
+        self._checkpoint_path = _current_dir / "./checkpoints/gator-small-classification.ckpt"
 
         visualizer = ClassificationVis(grid_size=(14, 14), patch_size=16)
         loss_fn = GatorClassificationLoss(grid_size=(14, 14), patch_size=16)
@@ -41,7 +42,7 @@ class GatorGradioDemo:
         self._model_wrapper.eval()
         print(f"Loaded model from {self._checkpoint_path}!")
 
-        self._transformation = get_pair_transforms_gator("resize224")
+        self._transformation = get_pair_transforms_gator("resize224+crop224")
         self._to_pil = torchvision.transforms.ToPILImage()
 
     def forward(self, image1_pil: PIL.Image, image2_pil: PIL.Image) -> list[PIL.Image, PIL.Image]:
@@ -70,6 +71,10 @@ class GatorGradioDemo:
 def main():
     print("Launching Gradio demo...")
     print("If running locally, open http://localhost:7860 in your browser.")
+    
+    title = "Gator Demo"
+    description = "Upload two images and see how Gator unshuffles patches from one of them to match the other!"
+
     demo = GatorGradioDemo()
     gr.Interface(
         fn=demo.forward, 
@@ -78,9 +83,18 @@ def main():
             gr.Image(type="pil", label="Reference")
         ], 
         outputs=[
+            gr.Image(type="pil", label="Shuffled"),
             gr.Image(type="pil", label="Unshuffled"), 
-            gr.Image(type="pil", label="Shuffled")
-        ]).launch()
+        ], 
+        title=title,
+        description=description,
+        examples=[
+            [
+                PIL.Image.open(_current_dir / f"./gradio_examples/img{i}_1.jpg"),
+                PIL.Image.open(_current_dir / f"./gradio_examples/img{i}_2.jpg"),
+            ] for i in range(5)
+        ]
+    ).launch()
 
 if __name__ == "__main__":
     main()

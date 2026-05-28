@@ -1,3 +1,11 @@
+---
+title: Gator Demo
+emoji: 🚀
+sdk: gradio
+app_file: app.py
+pinned: false
+---
+
 # gator
 Multiview Jigsaw-Puzzle solving as a pretraining task
 
