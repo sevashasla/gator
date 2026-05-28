@@ -19,10 +19,9 @@ from gator import logger
 @dataclass(kw_only=True)
 class ShowArgumentsGator(TrainingArgumentsGator):
     ckpt_path: Path
-    output_dir: ClassVar[Path] = None
-    output_path: Path = Path("output.png")
     sample_ratio: float = 1.0
     zero_reference: bool = False
+    num_batches: int = 3
 
     def __post_init__(self):
         pass
@@ -63,8 +62,7 @@ def shuffle_patches(
     return images_reshuffled
 
 def main(args: ShowArgumentsGator):
-    logger.info("output_path: " + str(args.output_path))
-    args.output_path.parent.mkdir(exist_ok=True, parents=True)
+    args.output_dir.parent.mkdir(exist_ok=True, parents=True)
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
     device = torch.device(device)
@@ -75,12 +73,19 @@ def main(args: ShowArgumentsGator):
 
     cudnn.benchmark = True
 
-    data_loader_train, data_loader_eval = args.get_dataloaders()
+    _, data_loader_eval = args.get_dataloaders()
     model_wrapped: GatorWrapper = args.get_wrapper()
     model_wrapped.to(device)
     model_wrapped.eval()
 
-    for _, batch in zip(range(1), data_loader_eval):
+    eval_length = int(args.opt_params.dataset_size * args.opt_params.tt_split_ratio) // args.opt_params.batch_size
+    random_indices = torch.randperm(eval_length)[:args.num_batches].tolist()
+
+    for i, batch in enumerate(data_loader_eval):
+        if i not in random_indices:
+            continue
+
+        output_path = args.output_dir / f"pred_batch_{i}.png"
         batch = torch.stack(batch, dim=1).to(device) # (B, 2, C, H, W)
 
         real_images = batch[:, 0, :, :, :]
@@ -134,15 +139,16 @@ def main(args: ShowArgumentsGator):
         # concatenate them into one image
         # (C, H, 8*W)x3 -> (C, 3*H, 8*W)
         images_cat = torch.cat([
-            images_ref_cat, 
-            real_images_selected_cat,
             images_input_cat, 
-            images_pred_cat
+            images_ref_cat, 
+            images_pred_cat,
+            real_images_selected_cat,
         ], dim=1)
         images_cat = TF.resize(images_cat, (112 * 4, 112 * 8))
         images_cat = images_cat.clamp(0, 1)
+        print(output_path)
         torchvision.utils.save_image(
-            images_cat.cpu(), args.output_path
+            images_cat.cpu(), output_path
         )
 
 

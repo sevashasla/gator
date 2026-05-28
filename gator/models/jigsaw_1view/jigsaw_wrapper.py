@@ -228,11 +228,15 @@ class Jigsaw1ViewWrapper(L.LightningModule):
 
     def test_step(self, batch, batch_idx):
         batch = torch.stack(batch, dim=1) # (B, 2, C, H, W)
-        
+
         out, gt_pos, num_register_tokens = self.forward(
             batch, 
             shuffle_ratio=1.0,
         )
+        if self.__class__ is Jigsaw1ViewWrapper:
+            out = out[:out.size(0) // 2]
+            gt_pos = gt_pos[:gt_pos.size(0) // 2, :, :]
+
 
         # compute and log validation loss
         loss = self._loss_fn.forward(
