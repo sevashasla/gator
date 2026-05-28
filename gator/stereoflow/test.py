@@ -17,6 +17,7 @@ from torch.utils.data import DataLoader
 
 import gator.utils.misc as misc
 from gator.models.croco_downstream import CroCoDownstreamBinocular
+from gator.models.gator_downstream import GatorDownstreamBinocular
 from gator.models.head_downstream import PixelwiseTaskWithDPT
 
 from gator.stereoflow.criterion import *
@@ -51,19 +52,29 @@ def get_args_parser():
 def _load_model_and_criterion(model_path, do_load_metrics, device):
     print('loading model from', model_path)
     assert os.path.isfile(model_path)
-    ckpt = torch.load(model_path, 'cpu')
-    
+    ckpt = torch.load(model_path, map_location='cpu', weights_only=False)
+
     ckpt_args = ckpt['args']
     task = ckpt_args.task
     tile_conf_mode = ckpt_args.tile_conf_mode
     num_channels = {'stereo': 1, 'flow': 2}[task]
-    with_conf =  eval(ckpt_args.criterion).with_conf
+    with_conf = eval(ckpt_args.criterion).with_conf
     if with_conf: num_channels += 1
     print('head: PixelwiseTaskWithDPT()')
     head = PixelwiseTaskWithDPT()
     head.num_channels = num_channels
-    print('croco_args:', ckpt_args.croco_args)
-    model = CroCoDownstreamBinocular(head, **ckpt_args.croco_args)
+    model_type = getattr(ckpt_args, 'model', 'croco')
+    if model_type == 'croco':
+        print('croco_args:', ckpt_args.croco_args)
+        model = CroCoDownstreamBinocular(head, **ckpt_args.croco_args)
+    elif model_type == 'gator':
+        print('gator_config:', ckpt_args.gator_config)
+        model = GatorDownstreamBinocular(head, ckpt_args.gator_config, img_size=tuple(ckpt_args.crop))
+    else:  # mae or jigsaw_1view
+        print(f'oneview ({model_type}) gator_config:', ckpt_args.gator_config)
+        is_jigsaw = (model_type == 'jigsaw_1view')
+        model = GatorDownstreamBinocular(head, ckpt_args.gator_config, img_size=tuple(ckpt_args.crop),
+                                         use_rope=not is_jigsaw, apply_no_pos_emb=is_jigsaw)
     msg = model.load_state_dict(ckpt['model'], strict=True)
     model.eval()
     model = model.to(device)

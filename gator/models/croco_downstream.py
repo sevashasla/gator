@@ -17,8 +17,20 @@ def croco_args_from_ckpt(ckpt):
         s = ckpt['args'].model # eg "CroCoNet(enc_embed_dim=1024, enc_num_heads=16, enc_depth=24)"
         assert s.startswith('CroCoNet(')
         return eval('dict'+s[len('CroCoNet'):]) # transform it into the string of a dictionary and evaluate it
-    else: # CroCo v1 released models
+    else: # CroCo v1 or Lightning checkpoint — architecture not stored
         return dict()
+
+
+def load_croco_state_dict(ckpt):
+    """Load CroCo encoder+decoder weights from official (.pth) or Lightning (.ckpt) checkpoint."""
+    if 'model' in ckpt:
+        return ckpt['model']
+    # Lightning checkpoint: weights live under the '_model.' prefix
+    return {
+        k[len('_model.'):]: v
+        for k, v in ckpt['state_dict'].items()
+        if k.startswith('_model.')
+    }
 
 class CroCoDownstreamMonocularEncoder(CroCoNet):
 
