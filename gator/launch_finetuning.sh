@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=mae-small-001-24hrs
+#SBATCH --job-name=gator-flow
 #SBATCH --time=16:00:00
 #SBATCH --account=cs-503
 #SBATCH --qos=cs-503
@@ -23,7 +23,7 @@ mkdir -p logs
 # -----------------------------------------------------------------------------
 # User-configurable paths / hyperparameters
 # -----------------------------------------------------------------------------
-MODEL="mae"                                   # "croco", "gator", "mae", or "jigsaw_1view"
+MODEL="gator"                                   # "croco", "gator", "mae", or "jigsaw_1view"
 # Required when MODEL="croco" and the checkpoint is a Lightning .ckpt (architecture is not stored in it).
 # Ignored for official CroCo .pth files (architecture is auto-detected).
 CROCO_CONFIG="CroCoNet(enc_embed_dim=384, enc_depth=12, enc_num_heads=6, dec_embed_dim=384, dec_depth=8, dec_num_heads=6, mlp_ratio=4.0, pos_embed='RoPE100')"
@@ -41,7 +41,7 @@ OUTPUT_DIR="./checkpoints/${SLURM_JOB_NAME}_${SLURM_JOB_ID}"
 # CroCo pretrained checkpoint (.pth):
 # PRETRAINED="./pretrained_models/CroCo_V2_ViTLarge_BaseDecoder.pth"
 # Gator pretrained checkpoint (Lightning .ckpt) — uncomment and set MODEL="gator":
-PRETRAINED="/scratch/izar/skorokho/gator/final-ckpts/mae-small-000-24hrs.ckpt"
+PRETRAINED="/scratch/izar/skorokho/gator/final-ckpts/gator-small-001-24hrs.ckpt"
 
 # STEREO
 # DATASET="Kitti12('train')+Kitti15('train')+30*ETH3DLowRes(split='train')+50*Md14('train')+50*Md21('train')+Booster('train_balanced')"
@@ -108,4 +108,4 @@ torchrun --standalone --nproc_per_node=${NUM_GPUS} stereoflow/train.py "${TASK}"
     --amp 1 \
     --wandb 1 \
     --wandb_project gator-stereoflow \
-    --wandb_name mae_flow_classification
+    --wandb_name gator_flow_classification
