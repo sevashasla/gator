@@ -13,6 +13,7 @@ from transformers import get_cosine_schedule_with_warmup
 from torchmetrics import Accuracy
 import torchvision.transforms.v2.functional as TF
 
+
 class GatorWrapper(Jigsaw1ViewWrapper):
     def __init__(
             self, 
@@ -111,7 +112,7 @@ class GatorWrapper(Jigsaw1ViewWrapper):
         self.log("val_acc", acc_value, on_step=False, on_epoch=True, sync_dist=True)
         self._acc.reset()
 
-        if batch_idx == 0:
+        if batch_idx == 0 and self.trainer.is_global_zero:
             self._my_log_images(
                 batch=batch, 
                 out=out, 

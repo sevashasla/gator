@@ -7,12 +7,13 @@ from gator.models.jigsaw_1view.model_jigsaw import Jigsaw1View
 from gator.models.gator_losses.base import GatorBaseLoss
 from gator.models.gator_visualizer.base import GatorBaseVis
 
-from gator.utils import misc
 from gator import logger
 from transformers import get_cosine_schedule_with_warmup
 from torchmetrics import Accuracy
 import torchvision.transforms.v2.functional as TF
 import torch.nn.functional as F
+
+from gator.utils import misc
 
 @dataclass
 class OptimizationParameters:
@@ -55,8 +56,8 @@ class OptimizationParameters:
         self.update_lr()
         self.update_steps_per_epoch()
 
-    def update_lr(self, force=False):
-        eff_batch_size = self.batch_size * self.accum_iter * misc.get_world_size()
+    def update_lr(self, force: bool = False, world_size: int = 1):        
+        eff_batch_size = self.batch_size * self.accum_iter * world_size
         if self.lr is None or force:  # only base_lr is specified
             self.lr = self.blr * eff_batch_size / 128
         
@@ -66,10 +67,10 @@ class OptimizationParameters:
         logger.info(f"accumulate grad iterations: {self.accum_iter}")
         logger.info(f"effective batch size: {eff_batch_size}")
 
-    def update_steps_per_epoch(self, force=False):
+    def update_steps_per_epoch(self, force: bool = False, world_size: int = 1):
         if self.steps_per_epoch is None or force:
             self.steps_per_epoch = int(self.dataset_size * (1 - self.tt_split_ratio)) // \
-                (self.batch_size * misc.get_world_size())
+                (self.batch_size * world_size)
         
         logger.info(f"Updated steps per epoch: {self.steps_per_epoch}")
 
@@ -215,7 +216,7 @@ class Jigsaw1ViewWrapper(L.LightningModule):
         self.log("val_acc", acc_value, on_step=False, on_epoch=True, sync_dist=True)
         self._acc.reset()
 
-        if batch_idx == 0:
+        if batch_idx == 0 and self.trainer.is_global_zero:
             self._my_log_images(
                 batch=batch, 
                 out=out, 
