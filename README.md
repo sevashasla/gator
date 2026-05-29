@@ -91,16 +91,16 @@ uv venv && source .venv/bin/activate && uv sync --all-extras
 
 ### Classification
 
-> Download ImageNet-1K from HuggingFace
+Download ImageNet-1K dataset
 
 ```bash
 python3 gator/scripts/classification/load_imagenet.py \
-    --output_dir /scratch/izar/mayila/imagenet_full \
+    --output_dir /path/to/store/dataset \
     --splits validation \
     --shuffle_buffer 10000
 ```
 
->Linear probe evaluation on ImageNet-1k: the backbone is frozen and a single linear head (`nn.Linear(embed_dim, 1000)`) is trained on top of the extracted features.
+Linear probe evaluation on ImageNet-1k: the backbone is frozen and a single linear head (`nn.Linear(embed_dim, 1000)`) is trained on top of the extracted features.
 
 #### Gator / MAE / DisBa (ViT backbone)
 
