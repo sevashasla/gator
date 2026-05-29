@@ -40,7 +40,7 @@ class GatorRelpose(nn.Module):
 
     @staticmethod
     def _get_encdec_state_dict(ckpt_path, device):
-        state_dict = torch.load(ckpt_path, map_location=device)["state_dict"]
+        state_dict = torch.load(ckpt_path, map_location=device, weights_only=False)["state_dict"]
         return {
             k[len('_model.'):]: v
             for k, v in state_dict.items()
