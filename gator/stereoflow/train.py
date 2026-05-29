@@ -7,6 +7,7 @@
 
 import argparse
 import datetime
+from dataclasses import replace as dataclass_replace
 import json
 import numpy as np
 import os
@@ -24,9 +25,12 @@ from torch.utils.data import DataLoader
 import gator.utils
 import gator.utils.misc as misc
 from gator.utils.misc import NativeScalerWithGradNormCount as NativeScaler
-from gator.models.croco_downstream import CroCoDownstreamBinocular, croco_args_from_ckpt
+from gator.models.croco_downstream import CroCoDownstreamBinocular, croco_args_from_ckpt, load_croco_state_dict
 from gator.models.pos_embed import interpolate_pos_embed
 from gator.models.head_downstream import PixelwiseTaskWithDPT
+from gator.models.gator_downstream import GatorDownstreamBinocular, load_gator_state_dict
+from gator.models.gator_2view.model_gator import GatorConfig
+from gator.models.oneview_downstream import load_oneview_state_dict
 
 from gator.stereoflow.datasets_stereo import get_train_dataset_stereo, get_test_datasets_stereo
 from gator.stereoflow.datasets_flow import get_train_dataset_flow, get_test_datasets_flow
@@ -44,11 +48,18 @@ def get_args_parser():
         if default is not None: assert default_stereo is None and default_flow is None, "setting default makes default_stereo and default_flow disabled"
         parser_stereo.add_argument(name_or_flags, default=default if default is not None else default_stereo, **kwargs)
         parser_flow.add_argument(name_or_flags, default=default if default is not None else default_flow, **kwargs)
-    # output dir 
+    # output dir
     add_arg('--output_dir', required=True, type=str, help='path where to save, if empty, automatically created')
     # model
+    add_arg('--model', default='croco', type=str, choices=['croco', 'gator', 'mae', 'jigsaw_1view'], help='Model backbone to finetune')
+    add_arg('--croco_config', default='', type=str,
+            help="CroCo arch string for Lightning checkpoints, e.g. \"CroCoNet(enc_embed_dim=384, enc_depth=12, enc_num_heads=6, dec_embed_dim=384, dec_depth=8, dec_num_heads=6)\"  (not needed for official .pth checkpoints)")
+    add_arg('--gator_config', default='', type=str,
+            help="Comma-separated GatorConfig field overrides, e.g. \"enc_emb_dim=384,dec_emb_dim=384,enc_num_heads=6,dec_num_heads=6\"  (empty means use GatorConfig defaults)")
+    add_arg('--oneview_config', default='', type=str,
+            help="Comma-separated Jigsaw1ViewConfig/MAEConfig field overrides, e.g. \"enc_emb_dim=384,enc_num_heads=6\"  (empty means use defaults)")
     add_arg('--crop', type=int, nargs = '+', default_stereo=[352, 704], default_flow=[320, 384], help = "size of the random image crops used during training.")
-    add_arg('--pretrained', required=True, type=str, help="Load pretrained model (required as croco arguments come from there)")
+    add_arg('--pretrained', required=True, type=str, help="Path to pretrained checkpoint (CroCo .pth or Gator Lightning .ckpt)")
     # criterion  
     add_arg('--criterion', default_stereo='LaplacianLossBounded2()', default_flow='LaplacianLossBounded()', type=str, help='string to evaluate to get criterion')
     add_arg('--bestmetric', default_stereo='avgerr', default_flow='EPE', type=str)
@@ -60,6 +71,7 @@ def get_args_parser():
     add_arg('--epochs', default=32, type=int, help='number of training epochs')
     add_arg('--img_per_epoch', type=int, default=None, help='Fix the number of images seen in an epoch (None means use all training pairs)')
     add_arg('--accum_iter', default=1, type=int, help='Accumulate gradient iterations (for increasing the effective batch size under memory constraints)')
+    add_arg('--clip_grad', type=float, default=None, help='Gradient clipping max norm (None = disabled)')
     add_arg('--weight_decay', type=float, default=0.05, help='weight decay (default: 0.05)')
     add_arg('--lr', type=float, default_stereo=3e-5, default_flow=2e-5, metavar='LR', help='learning rate (absolute lr)')
     add_arg('--min_lr', type=float, default=0., metavar='LR', help='lower lr bound for cyclic schedulers that hit 0')
@@ -76,8 +88,12 @@ def get_args_parser():
     add_arg('--eval_every', type=int, default=1, help='Val loss evaluation frequency')
     add_arg('--save_every', type=int, default=1, help='Save checkpoint frequency')
     add_arg('--start_from', type=str, default=None, help='Start training using weights from an other model (eg for finetuning)')
+    add_arg('--freeze_encoder', default=0, type=int, choices=[0, 1], help='Freeze encoder weights; only decoder and head are trained')
     add_arg('--tboard_log_step', type=int, default=100, help='Log to tboard every so many steps')
     add_arg('--dist_url', default='env://', help='url used to set up distributed training')
+    add_arg('--wandb', default=0, type=int, choices=[0,1], help='Enable Weights & Biases logging')
+    add_arg('--wandb_project', default='stereoflow', type=str, help='wandb project name')
+    add_arg('--wandb_name', default=None, type=str, help='wandb run name (default: auto)')
 
     return parser
     
@@ -105,22 +121,79 @@ def main(args):
 
     # Prepare model
     assert os.path.isfile(args.pretrained)
-    ckpt = torch.load(args.pretrained, 'cpu')
-    croco_args = croco_args_from_ckpt(ckpt)
-    croco_args['img_size'] = (args.crop[0], args.crop[1])
-    print('Croco args: '+str(croco_args))
-    args.croco_args = croco_args # saved for test time 
-    # prepare head 
+    ckpt = torch.load(args.pretrained, map_location='cpu', weights_only=False)
+    # prepare head (same for both backbones)
     num_channels = {'stereo': 1, 'flow': 2}[args.task]
     if criterion.with_conf: num_channels += 1
     print(f'Building head PixelwiseTaskWithDPT() with {num_channels} channel(s)')
     head = PixelwiseTaskWithDPT()
     head.num_channels = num_channels
     # build model and load pretrained weights
-    model = CroCoDownstreamBinocular(head, **croco_args)
-    interpolate_pos_embed(model, ckpt['model'])
-    msg = model.load_state_dict(ckpt['model'], strict=False)
-    print(msg)
+    if args.model == 'croco':
+        croco_args = croco_args_from_ckpt(ckpt)
+        if not croco_args:
+            if not args.croco_config:
+                raise ValueError(
+                    "Could not infer CroCo architecture from checkpoint. "
+                    "Pass --croco_config \"CroCoNet(enc_embed_dim=384, ...)\" to specify it."
+                )
+            s = args.croco_config.strip()
+            assert s.startswith('CroCoNet('), \
+                f"--croco_config must start with 'CroCoNet(', got: {s!r}"
+            croco_args = eval('dict' + s[len('CroCoNet'):])
+        croco_args['img_size'] = (args.crop[0], args.crop[1])
+        print('CroCo args: ' + str(croco_args))
+        args.croco_args = croco_args  # saved for test time
+        model = CroCoDownstreamBinocular(head, **croco_args)
+        croco_state_dict = load_croco_state_dict(ckpt)
+        interpolate_pos_embed(model, croco_state_dict)
+        msg = model.load_state_dict(croco_state_dict, strict=False)
+        print(msg)
+    elif args.model == 'gator':
+        gator_config = GatorConfig()
+        if args.gator_config:
+            overrides = eval(f"dict({args.gator_config})")
+            gator_config = dataclass_replace(gator_config, **overrides)
+        print('Gator config: ' + str(gator_config))
+        args.gator_config = gator_config  # saved for test time
+        model = GatorDownstreamBinocular(head, gator_config, img_size=(args.crop[0], args.crop[1]))
+        gator_state_dict = load_gator_state_dict(ckpt)
+        msg = model.load_state_dict(gator_state_dict, strict=False)
+        print(msg)
+    else:  # mae or jigsaw_1view — encoder from pretrained, Gator cross-attn decoder random-init
+        gator_config = GatorConfig()
+        if args.gator_config:
+            overrides = eval(f"dict({args.gator_config})")
+            gator_config = dataclass_replace(gator_config, **overrides)
+        print(f'OneView ({args.model}) backbone: GatorDownstreamBinocular with ' + str(gator_config))
+        args.gator_config = gator_config  # saved for test time
+        # jigsaw_1view was pretrained with use_rope=False and a _no_pos_emb bias on every
+        # patch token; replicate that distribution during finetuning.
+        is_jigsaw = (args.model == 'jigsaw_1view')
+        model = GatorDownstreamBinocular(head, gator_config, img_size=(args.crop[0], args.crop[1]),
+                                         use_rope=not is_jigsaw, apply_no_pos_emb=is_jigsaw)
+        oneview_state_dict = load_oneview_state_dict(ckpt)
+        msg = model.load_state_dict(oneview_state_dict, strict=False)
+        unexpected = msg.unexpected_keys
+        # Only the core encoder blocks, patch embed and enc_norm are required;
+        # _no_pos_emb and _register_tokens may legitimately be absent from some
+        # pretrained checkpoints (e.g. MAE has no _no_pos_emb).
+        core_missing = [k for k in msg.missing_keys
+                        if k.startswith('_encoder_blocks') or k.startswith('_patch_embed') or k.startswith('_enc_norm')]
+        if unexpected:
+            raise RuntimeError(f'Unexpected keys when loading oneview encoder (bug in load_oneview_state_dict): {unexpected}')
+        if core_missing:
+            raise RuntimeError(f'Core encoder keys were not loaded from pretrained checkpoint: {core_missing}')
+        n_init = len(msg.missing_keys)
+        print(f'  Loaded encoder weights ({len(oneview_state_dict)} tensors). '
+              f'Randomly initialised {n_init} tensors (decoder, head'
+              + (', _no_pos_emb' if '_no_pos_emb' in msg.missing_keys else '') + ').')
+
+    if args.freeze_encoder:
+        for name, param in model.named_parameters():
+            if not name.startswith('head.') and not name.startswith('_decoder'):
+                param.requires_grad_(False)
+        print("Encoder frozen: only decoder and head will be trained.")
 
     total_params = sum(p.numel() for p in model.parameters())
     total_params_trainable = sum(p.numel() for p in model.parameters() if p.requires_grad)
@@ -151,7 +224,7 @@ def main(args):
         print(f"Starting from an other model's weights: {args.start_from}")
         best_so_far = None
         args.start_epoch = 0
-        ckpt = torch.load(args.start_from, 'cpu')
+        ckpt = torch.load(args.start_from, map_location='cpu', weights_only=False)
         msg = model_without_ddp.load_state_dict(ckpt['model'], strict=False)
         print(msg)
     else:
@@ -163,6 +236,32 @@ def main(args):
     log_writer = None
     if global_rank == 0 and args.output_dir is not None:
         log_writer = SummaryWriter(log_dir=args.output_dir, purge_step=args.start_epoch*1000)
+
+    # wandb (optional, rank 0 only)
+    wandb_run = None
+    if global_rank == 0 and args.wandb:
+        import wandb
+        run_id_file = os.path.join(args.output_dir, 'wandb_run_id.txt')
+        run_id = None
+        if os.path.isfile(run_id_file):
+            with open(run_id_file) as f:
+                run_id = f.read().strip()
+        try:
+            wandb_run = wandb.init(
+                project=args.wandb_project,
+                name=args.wandb_name,
+                id=run_id,
+                config={k: v for k, v in vars(args).items()
+                        if isinstance(v, (int, float, str, bool, list, type(None)))},
+                dir=args.output_dir,
+                resume='allow',
+            )
+            if run_id is None:
+                with open(run_id_file, 'w') as f:
+                    f.write(wandb_run.id)
+        except Exception as e:
+            print(f"[WARNING] wandb.init() failed ({e}); continuing without wandb logging.")
+            wandb_run = None
 
     #  dataset and loader 
     print('Building Train Data loader for dataset: ', args.dataset)
@@ -206,7 +305,7 @@ def main(args):
             
         # Train
         epoch_start = time.time()
-        train_stats = train_one_epoch(model, criterion, metrics, data_loader_train, optimizer, device, epoch, loss_scaler, log_writer=log_writer, args=args)
+        train_stats = train_one_epoch(model, criterion, metrics, data_loader_train, optimizer, device, epoch, loss_scaler, log_writer=log_writer, wandb_run=wandb_run, args=args)
         epoch_time = time.time() - epoch_start
 
         if args.distributed: dist.barrier()
@@ -242,7 +341,13 @@ def main(args):
                 log_writer.flush()
             with open(os.path.join(args.output_dir, "log.txt"), mode="a", encoding="utf-8") as f:
                 f.write(json.dumps(log_stats) + "\n")
-        
+
+        if wandb_run is not None:
+            wandb_run.log(log_stats)
+
+    if wandb_run is not None:
+        wandb_run.finish()
+
     total_time = time.time() - start_time
     total_time_str = str(datetime.timedelta(seconds=int(total_time)))
     print('Training time {}'.format(total_time_str))

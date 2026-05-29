@@ -7,6 +7,10 @@ __pycache__/
 *.so
 _db-q_pair_info
 _db-q_pair_info2
+matches
+matches_combined
+notebooks
+_db-q_pair*
 
 # Distribution / packaging
 .Python
@@ -37,6 +41,9 @@ MANIFEST
 # Installer logs
 pip-log.txt
 pip-delete-this-directory.txt
+
+# Checkpoints
+gator/checkpoints
 
 # Unit test / coverage reports
 htmlcov/
