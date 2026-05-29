@@ -218,3 +218,4 @@ marimo/_lsp/
 __marimo__/
 _db-q_pair_info/
 my_runs.sh
+visuals/
