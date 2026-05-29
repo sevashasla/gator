@@ -91,6 +91,59 @@ uv venv && source .venv/bin/activate && uv sync --all-extras
 
 ### Classification
 
+Download ImageNet-1K dataset
+
+```bash
+python3 gator/scripts/classification/load_imagenet.py \
+    --output_dir /path/to/store/dataset \
+    --splits validation \
+    --shuffle_buffer 10000
+```
+
+Linear probe evaluation on ImageNet-1k: the backbone is frozen and a single linear head (`nn.Linear(embed_dim, 1000)`) is trained on top of the extracted features.
+
+#### Gator / MAE / DisBa (ViT backbone)
+
+```bash
+python3 -m gator.scripts.classification.imagenet_ft_gator \
+    --checkpoint_path /path/to/checkpoint.ckpt \
+    --data_dir /path/to/imagenet \
+    --gator_config.enc_emb_dim 384 \
+    --gator_config.enc_num_heads 6 \
+    --gator_config.enc_depth 12 \
+    --gator_config.dec_emb_dim 384 \
+    --gator_config.dec_num_heads 6 \
+    --opt_params.batch_size 512 \
+    --opt_params.lr 1e-3 \
+    --opt_params.max_epoch 25
+```
+
+#### CroCo (ViT backbone)
+
+```bash
+python3 -m gator.scripts.classification.imagenet_ft_croco \
+    --checkpoint_path /path/to/checkpoint.ckpt \
+    --data_dir /path/to/imagenet \
+    --enc_embed_dim 384 \
+    --enc_depth 12 \
+    --enc_num_heads 6 \
+    --opt_params.batch_size 512 \
+    --opt_params.lr 1e-3 \
+    --opt_params.max_epoch 25
+```
+
+#### Jigsaw (DeiT backbone)
+
+```bash
+python3 -m gator.scripts.classification.imagenet_ft_jigsaw \
+    --checkpoint_path /path/to/checkpoint.ckpt \
+    --data_dir /path/to/imagenet \
+    --model_name deit_small_patch16_224 \
+    --batch_size 512 \
+    --max_epochs 25 \
+    --lr 1e-3
+```
+
 ### Optical Flow
 
 Optical flow is the task of estimating the dense 2D displacement field between two consecutive frames: for each pixel in the first image, the model predicts a vector `(u, v)` indicating where that pixel moved in the second image. The output is a `H × W × 2` field.
@@ -274,7 +327,8 @@ project-root/
 │   │   ├── utils/ - geometry, metric, and image utilities
 │   │   └── loss.py - L21 / relative camera pose regression loss
 │   │
-│   ├── scripts/ -  
+│   ├── scripts/ - 
+|   |   ├── classification/ finetune (gator, jigsaw, croco, MAE) for classification
 │   │   ├── features_exploration/ - extract and analyze attention maps
 │   │   ├── gator_multiview_usage/ - test whether Gator uses the reference view
 │   │   ├── pretrainings/ - pretraing models (Gator, Jigsaw, CroCo, MAE)
