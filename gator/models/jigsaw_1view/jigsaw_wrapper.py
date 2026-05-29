@@ -7,11 +7,13 @@ from gator.models.jigsaw_1view.model_jigsaw import Jigsaw1View
 from gator.models.gator_losses.base import GatorBaseLoss
 from gator.models.gator_visualizer.base import GatorBaseVis
 
-from gator.utils import misc
 from gator import logger
 from transformers import get_cosine_schedule_with_warmup
 from torchmetrics import Accuracy
 import torchvision.transforms.v2.functional as TF
+import torch.nn.functional as F
+
+from gator.utils import misc
 
 @dataclass
 class OptimizationParameters:
@@ -54,9 +56,9 @@ class OptimizationParameters:
         self.update_lr()
         self.update_steps_per_epoch()
 
-    def update_lr(self):
-        eff_batch_size = self.batch_size * self.accum_iter * misc.get_world_size()
-        if self.lr is None:  # only base_lr is specified
+    def update_lr(self, force: bool = False, world_size: int = 1):        
+        eff_batch_size = self.batch_size * self.accum_iter * world_size
+        if self.lr is None or force:  # only base_lr is specified
             self.lr = self.blr * eff_batch_size / 128
         
         logger.info("Updated LR")
@@ -65,10 +67,10 @@ class OptimizationParameters:
         logger.info(f"accumulate grad iterations: {self.accum_iter}")
         logger.info(f"effective batch size: {eff_batch_size}")
 
-    def update_steps_per_epoch(self):
-        if self.steps_per_epoch is None:
+    def update_steps_per_epoch(self, force: bool = False, world_size: int = 1):
+        if self.steps_per_epoch is None or force:
             self.steps_per_epoch = int(self.dataset_size * (1 - self.tt_split_ratio)) // \
-                (self.batch_size * misc.get_world_size())
+                (self.batch_size * world_size)
         
         logger.info(f"Updated steps per epoch: {self.steps_per_epoch}")
 
@@ -214,7 +216,7 @@ class Jigsaw1ViewWrapper(L.LightningModule):
         self.log("val_acc", acc_value, on_step=False, on_epoch=True, sync_dist=True)
         self._acc.reset()
 
-        if batch_idx == 0:
+        if batch_idx == 0 and self.trainer.is_global_zero:
             self._my_log_images(
                 batch=batch, 
                 out=out, 
@@ -222,6 +224,52 @@ class Jigsaw1ViewWrapper(L.LightningModule):
                 num_register_tokens=num_register_tokens,
                 num_random=8,
             )
+
+        return loss
+
+    def test_step(self, batch, batch_idx):
+        batch = torch.stack(batch, dim=1) # (B, 2, C, H, W)
+
+        out, gt_pos, num_register_tokens = self.forward(
+            batch, 
+            shuffle_ratio=1.0,
+        )
+        if self.__class__ is Jigsaw1ViewWrapper:
+            out = out[:out.size(0) // 2]
+            gt_pos = gt_pos[:gt_pos.size(0) // 2, :, :]
+
+
+        # compute and log validation loss
+        loss = self._loss_fn.forward(
+            pred=out, 
+            gt_pos=gt_pos, 
+            gt_image=batch[:, 0, :, :, :],
+            num_register_tokens=num_register_tokens,
+        )
+        self.log("test_loss", loss, on_step=False, on_epoch=True, sync_dist=True)
+
+        # compute and log accuracy
+        if out.shape[-1] != self._grid_size[0] * self._grid_size[1]:
+            pred_ids = self.distance_based_to_idx(out, num_register_tokens) # (B, N1)
+        else:
+            pred_ids = out[:, num_register_tokens:, :].argmax(dim=-1) # (B, N1)
+            
+        gt_ids_flat = gt_pos[:, :, 0] * self._grid_size[1] + gt_pos[:, :, 1] # (B, N1)
+        self._acc.update(pred_ids, gt_ids_flat)
+        acc_value = self._acc.compute()
+        self.log("test_acc", acc_value, on_step=False, on_epoch=True, sync_dist=True)
+        self._acc.reset()
+
+        # create images
+        images_pred = self._visualizer.forward(
+            pred=out, 
+            gt_pos=gt_pos,
+            gt_image=batch[:, 0, :, :, :],
+            num_register_tokens=num_register_tokens,
+        )
+
+        mse = F.mse_loss(images_pred, batch[:, 0, :, :, :])
+        self.log("test_mse", mse, on_step=False, on_epoch=True, sync_dist=True)
 
         return loss
     

@@ -5,12 +5,13 @@ import torch.nn as nn
 from gator.models.gator_losses.base import GatorBaseLoss
 
 class GatorVisualLoss(GatorBaseLoss):
-    def patchify(self, imgs):
+    @staticmethod
+    def patchify(imgs, patch_size):
         """
         imgs: (B, 3, H, W)
         x: (B, L, patch_size**2 *3)
         """
-        p = self._patch_size
+        p = patch_size
         assert imgs.shape[2] == imgs.shape[3] and imgs.shape[2] % p == 0
 
         h = w = imgs.shape[2] // p
@@ -47,7 +48,7 @@ class GatorVisualLoss(GatorBaseLoss):
         pred_no_reg = pred[:, num_register_tokens:, :] # (B, N1, N)
         pred_sf = torch.softmax(pred_no_reg, dim=-1) # (B, N1, N)
         
-        patches = self.patchify(gt_image) # (B, N, D)
+        patches = self.patchify(gt_image, self._patch_size) # (B, N, D)
         if patches.size(1) != self._num_patches:
             raise ValueError(f"patches.size(1) should be {self._num_patches} but got {patches.size(1)}")
         _, _, D = patches.shape

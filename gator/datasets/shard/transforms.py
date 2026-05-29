@@ -32,6 +32,12 @@ class RandomCropPair(T.RandomCrop):
         img1 = super().forward(img1)
         img2 = super().forward(img2)
         return img1, img2
+    
+class ResizePair(T.Resize):
+    def forward(self, img1, img2):
+        img1 = super().forward(img1)
+        img2 = super().forward(img2)
+        return img1, img2
 
 class ColorJitterPair(T.ColorJitter): 
     # can be symmetric (same for both images) or assymetric (different jitter params for each image) depending on assymetric_prob  
@@ -55,17 +61,24 @@ def get_pair_transforms_gator(transform_str):
         if s.startswith('crop'):
             size = int(s[len('crop'):])
             trfs.append(RandomCropPair(size))
+        elif s.startswith('resize'):
+            size = int(s[len('resize'):])
+            trfs.append(ResizePair(size))
         elif s=='acolor':
             trfs.append(ColorJitterPair(assymetric_prob=1.0, brightness=(0.6, 1.4), contrast=(0.6, 1.4), saturation=(0.6, 1.4), hue=0.0))
         elif s=="norm":
-            trfs.append( NormalizeBoth(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]) )
+            trfs.extend([
+                ToTensorBoth(),
+                NormalizeBoth(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+            ])
 
         elif s=='': # if transform_str was ""
             pass
         else:
             raise NotImplementedError('Unknown augmentation: '+s)
-            
-    trfs.append( ToTensorBoth() )
+    
+    if "norm" not in transform_str:
+        trfs.append( ToTensorBoth() )
     
     if len(trfs)==1:
         return trfs

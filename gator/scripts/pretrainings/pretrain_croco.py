@@ -39,7 +39,7 @@ class TrainingArgumentsCroco(TrainingArgumentsJigsaw):
     loss_config: ClassVar[None] = None
     model_config: ClassVar[None] = None
     visualizer_config: ClassVar[None] = None
-    opt_params = field(
+    opt_params: OptimizationParameters = field(
         default_factory=lambda: OptimizationParameters(
             weight_decay=0.05,
             blr=1.5e-4 / 2, # because we use 128 but not 256 batch size
@@ -69,6 +69,10 @@ class TrainingArgumentsCroco(TrainingArgumentsJigsaw):
         # It is built-it in the Wrapper
         # visualizer = self._get_visualizer()
         model = self._get_model()
+
+        # update it again (idk why it is necessary but we should do this)
+        self.opt_params.update_lr(force=True)
+        self.opt_params.update_steps_per_epoch(force=True)
         
         # wrapper
         model_wrapped = CroCoWrapper(

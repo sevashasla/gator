@@ -1,19 +1,20 @@
 #!/bin/bash
-#SBATCH --job-name=croco_ft
-#SBATCH --time=24:00:00
+#SBATCH --job-name=gator-flow
+#SBATCH --time=16:00:00
 #SBATCH --account=cs-503
 #SBATCH --qos=cs-503
-#SBATCH --gres=gpu:2
+#SBATCH --gres=gpu:1
 #SBATCH --mem=128G
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=8
 #SBATCH --output=logs/%x_%j.out
 #SBATCH --error=logs/%x_%j.err
 
-# Finetune CroCo on stereo or flow via torchrun on a single multi-GPU node.
+# Finetune CroCo, Gator, MAE or one-view-jigsaw on stereo or flow via torchrun on a single multi-GPU node.
 #
 # Usage:
-#   sbatch submit_train.sh
+#   sbatch launch_finetuning.sh
+#
 
 set -euo pipefail
 cd "${SLURM_SUBMIT_DIR:-.}"
@@ -22,22 +23,36 @@ mkdir -p logs
 # -----------------------------------------------------------------------------
 # User-configurable paths / hyperparameters
 # -----------------------------------------------------------------------------
-TASK="flow"                                   # "stereo" or "flow"
-NUM_GPUS=2                                      # must match --gres=gpu:N above
-CRITERION="LaplacianLossBounded2()"
+MODEL="gator"                                   # "croco", "gator", "mae", or "jigsaw_1view"
+# Required when MODEL="croco" and the checkpoint is a Lightning .ckpt (architecture is not stored in it).
+# Ignored for official CroCo .pth files (architecture is auto-detected).
+CROCO_CONFIG="CroCoNet(enc_embed_dim=384, enc_depth=12, enc_num_heads=6, dec_embed_dim=384, dec_depth=8, dec_num_heads=6, mlp_ratio=4.0, pos_embed='RoPE100')"
+# Overrides for GatorConfig defaults (empty string = tiny/192-dim defaults).
+# Set to match the pretrained checkpoint's architecture.
+GATOR_CONFIG="enc_emb_dim=384,dec_emb_dim=384,enc_num_heads=6,dec_num_heads=6"
+# Overrides for MAEConfig/Jigsaw1ViewConfig defaults (only encoder fields matter for downstream).
+ONEVIEW_CONFIG="enc_emb_dim=384,enc_num_heads=6"
+TASK="flow"                                     # "stereo" or "flow"
+NUM_GPUS=1                                     # must match --gres=gpu:N above
+CRITERION="LaplacianLossBounded()"
 
 OUTPUT_DIR="./checkpoints/${SLURM_JOB_NAME}_${SLURM_JOB_ID}"
-PRETRAINED="./pretrained_models/CroCo_V2_ViTLarge_BaseDecoder.pth"
+
+# CroCo pretrained checkpoint (.pth):
+# PRETRAINED="./pretrained_models/CroCo_V2_ViTLarge_BaseDecoder.pth"
+# Gator pretrained checkpoint (Lightning .ckpt) — uncomment and set MODEL="gator":
+PRETRAINED="/scratch/izar/skorokho/gator/final-ckpts/gator-small-001-24hrs.ckpt"
+
 # STEREO
-# DATASET="Kitti12('train')ETH3DLowRes(split='train')"
-# VAL_DATASET="ETH3DLowRes(split='subval')"
+# DATASET="Kitti12('train')+Kitti15('train')+30*ETH3DLowRes(split='train')+50*Md14('train')+50*Md21('train')+Booster('train_balanced')"
+# VAL_DATASET="ETH3DLowRes(split='subval')+Md14('subval')+Boo ter('subval_balanced')+Md21('subval')"
 
 # FLOW
-DATASET="40*MPISintel('subtrain_cleanpass')+40*MPISintel('subtrain_finalpass')"
+DATASET="40*MPISintel('subtrain_cleanpass')+40*MPISintel('subtrain_finalpass')+4*FlyingChairs('train')"
 VAL_DATASET="MPISintel('subval_cleanpass')+MPISintel('subval_finalpass')"
 
-BATCH_SIZE=8
-EPOCHS=32
+BATCH_SIZE=16
+EPOCHS=50
 NUM_WORKERS=8
 ACCUM_ITER=1
 
@@ -64,6 +79,7 @@ source ../.venv/bin/activate
 export PYTHONUNBUFFERED=1
 export OMP_NUM_THREADS=1                         # avoid thread oversubscription
 export NCCL_ASYNC_ERROR_HANDLING=1
+export WANDB_MODE=offline                        # compute nodes lack network; sync manually with: wandb sync <run_dir>
 # export NCCL_DEBUG=INFO                         # uncomment for NCCL troubleshooting
 
 echo "SLURM_JOB_ID=${SLURM_JOB_ID}"
@@ -75,7 +91,11 @@ echo "OUTPUT_DIR=${OUTPUT_DIR}"
 # Launch — torchrun spawns one worker per GPU on this node
 # -----------------------------------------------------------------------------
 torchrun --standalone --nproc_per_node=${NUM_GPUS} stereoflow/train.py "${TASK}" \
-    --criterion "${CRITERION}" \
+    --model        "${MODEL}" \
+    --croco_config "${CROCO_CONFIG}" \
+    --gator_config "${GATOR_CONFIG}" \
+    --oneview_config "${ONEVIEW_CONFIG}" \
+    --criterion   "${CRITERION}" \
     --output_dir  "${OUTPUT_DIR}" \
     --pretrained  "${PRETRAINED}" \
     --dataset     "${DATASET}" \
@@ -84,4 +104,8 @@ torchrun --standalone --nproc_per_node=${NUM_GPUS} stereoflow/train.py "${TASK}"
     --epochs      ${EPOCHS} \
     --num_workers ${NUM_WORKERS} \
     --accum_iter  ${ACCUM_ITER} \
-    --amp 1
+    --img_per_epoch 30000 \
+    --amp 1 \
+    --wandb 1 \
+    --wandb_project gator-stereoflow \
+    --wandb_name gator_flow_classification

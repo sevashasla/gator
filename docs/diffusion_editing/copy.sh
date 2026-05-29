@@ -1,0 +1,32 @@
+cp /scratch/izar/skorokho/croco-dataset/habitat_release/replica_cad_baked_lighting/remake_v0_v3_sc0_staging_02/00000004_1.jpeg /home/skorokho/coding/gator/docs/diffusion_editing/images_raw/img01.jpeg
+cp /scratch/izar/skorokho/croco-dataset/habitat_release/replica_cad_baked_lighting/remake_v0_v3_sc0_staging_02/00000005_1.jpeg /home/skorokho/coding/gator/docs/diffusion_editing/images_raw/img02.jpeg
+cp /scratch/izar/skorokho/croco-dataset/habitat_release/replica_cad_baked_lighting/remake_v0_v3_sc0_staging_02/00000828_2.jpeg /home/skorokho/coding/gator/docs/diffusion_editing/images_raw/img03.jpeg
+cp /scratch/izar/skorokho/croco-dataset/habitat_release/replica_cad_baked_lighting/remake_v0_v3_sc0_staging_02/00000887_2.jpeg /home/skorokho/coding/gator/docs/diffusion_editing/images_raw/img04.jpeg
+cp /scratch/izar/skorokho/croco-dataset/habitat_release/scannet/scene0003_01/00000007_1.jpeg /home/skorokho/coding/gator/docs/diffusion_editing/images_raw/img05.jpeg
+cp /scratch/izar/skorokho/croco-dataset/habitat_release/scannet/scene0003_01/00000017_2.jpeg /home/skorokho/coding/gator/docs/diffusion_editing/images_raw/img06.jpeg
+cp /scratch/izar/skorokho/croco-dataset/habitat_release/scannet/scene0006_01/00000439_2.jpeg /home/skorokho/coding/gator/docs/diffusion_editing/images_raw/img07.jpeg
+cp /scratch/izar/skorokho/croco-dataset/habitat_release/scannet/scene0006_02/00000012_1.jpeg /home/skorokho/coding/gator/docs/diffusion_editing/images_raw/img08.jpeg
+cp /scratch/izar/skorokho/croco-dataset/habitat_release/scannet/scene0012_01/00000388_1.jpeg /home/skorokho/coding/gator/docs/diffusion_editing/images_raw/img09.jpeg
+cp /scratch/izar/skorokho/croco-dataset/habitat_release/scannet/scene0012_01/00000696_1.jpeg /home/skorokho/coding/gator/docs/diffusion_editing/images_raw/img10.jpeg
+cp /scratch/izar/skorokho/croco-dataset/habitat_release/scannet/scene0016_01/00000026_1.jpeg /home/skorokho/coding/gator/docs/diffusion_editing/images_raw/img11.jpeg
+cp /scratch/izar/skorokho/croco-dataset/habitat_release/scannet/scene0018_00/00000056_2.jpeg /home/skorokho/coding/gator/docs/diffusion_editing/images_raw/img12.jpeg
+cp /scratch/izar/skorokho/croco-dataset/habitat_release/scannet/scene0019_01/00000434_1.jpeg /home/skorokho/coding/gator/docs/diffusion_editing/images_raw/img13.jpeg
+cp /scratch/izar/skorokho/croco-dataset/habitat_release/scannet/scene0073_00/00000039_2.jpeg /home/skorokho/coding/gator/docs/diffusion_editing/images_raw/img14.jpeg
+cp /scratch/izar/skorokho/croco-dataset/habitat_release/scannet/scene0201_02/00000028_2.jpeg /home/skorokho/coding/gator/docs/diffusion_editing/images_raw/img15.jpeg
+cp /scratch/izar/skorokho/croco-dataset/habitat_release/scannet/scene0385_01/00000052_1.jpeg /home/skorokho/coding/gator/docs/diffusion_editing/images_raw/img16.jpeg
+cp /scratch/izar/skorokho/croco-dataset/habitat_release/scannet/scene0417_00/00000806_2.jpeg /home/skorokho/coding/gator/docs/diffusion_editing/images_raw/img17.jpeg
+cp /scratch/izar/skorokho/croco-dataset/habitat_release/scannet/scene0457_02/00000008_1.jpeg /home/skorokho/coding/gator/docs/diffusion_editing/images_raw/img18.jpeg
+cp /scratch/izar/skorokho/croco-dataset/habitat_release/scannet/scene0505_00/00000813_1.jpeg /home/skorokho/coding/gator/docs/diffusion_editing/images_raw/img19.jpeg
+cp /scratch/izar/skorokho/croco-dataset/habitat_release/scannet/scene0610_02/00000563_2.jpeg /home/skorokho/coding/gator/docs/diffusion_editing/images_raw/img20.jpeg
+cp /scratch/izar/skorokho/croco-dataset/habitat_release/habitat-test-scenes/apartment_1/00000155_1.jpeg /home/skorokho/coding/gator/docs/diffusion_editing/images_raw/img21.jpeg
+cp /scratch/izar/skorokho/croco-dataset/habitat_release/habitat-test-scenes/apartment_1/00000203_2.jpeg /home/skorokho/coding/gator/docs/diffusion_editing/images_raw/img22.jpeg
+cp /scratch/izar/skorokho/croco-dataset/habitat_release/hm3d/train/00000-kfPV7w3FaU5/kfPV7w3FaU5.basis/00000060_1.jpeg /home/skorokho/coding/gator/docs/diffusion_editing/images_raw/img23.jpeg
+cp /scratch/izar/skorokho/croco-dataset/habitat_release/hm3d/train/00187-GCCrNuhZ9WY/GCCrNuhZ9WY.basis/00000000_2.jpeg /home/skorokho/coding/gator/docs/diffusion_editing/images_raw/img24.jpeg
+cp /scratch/izar/skorokho/croco-dataset/habitat_release/hm3d/train/00279-YmEfzspXX5h/YmEfzspXX5h.basis/00000026_1.jpeg /home/skorokho/coding/gator/docs/diffusion_editing/images_raw/img25.jpeg
+cp /scratch/izar/skorokho/croco-dataset/habitat_release/hm3d/train/00371-6AGcGQf2wof/6AGcGQf2wof.basis/00000055_2.jpeg /home/skorokho/coding/gator/docs/diffusion_editing/images_raw/img26.jpeg
+cp /scratch/izar/skorokho/croco-dataset/habitat_release/hm3d/train/00371-6AGcGQf2wof/6AGcGQf2wof.basis/00000398_1.jpeg /home/skorokho/coding/gator/docs/diffusion_editing/images_raw/img27.jpeg
+cp /scratch/izar/skorokho/croco-dataset/habitat_release/hm3d/train/00371-6AGcGQf2wof/6AGcGQf2wof.basis/00000423_2.jpeg /home/skorokho/coding/gator/docs/diffusion_editing/images_raw/img28.jpeg
+cp /scratch/izar/skorokho/croco-dataset/habitat_release/hm3d/train/00545-C2hbxeJWmvX/C2hbxeJWmvX.basis/00000060_1.jpeg /home/skorokho/coding/gator/docs/diffusion_editing/images_raw/img29.jpeg
+cp /scratch/izar/skorokho/croco-dataset/habitat_release/hm3d/train/00718-ASKXmHbw68X/ASKXmHbw68X.basis/00000015_2.jpeg /home/skorokho/coding/gator/docs/diffusion_editing/images_raw/img30.jpeg
+
+

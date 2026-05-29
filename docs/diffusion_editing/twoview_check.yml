@@ -1,0 +1,70 @@
+edited_root: ./docs/diffusion_editing/images_edit
+images:
+
+- name: img01.png
+  rectangle1: [11, 9, 3, 3]
+  rectangle2: [11, 6, 3, 3]
+
+# - name: img02.png
+#   rectangle1: [2, 1, 5, 3]
+#   rectangle2: [8, 1, 5, 3]
+
+- name: img04.png
+  rectangle1: [7, 4, 2, 2]
+  rectangle2: [7, 2, 2, 2]
+
+- name: img05.png
+  rectangle1: [3, 5, 4, 3]
+  rectangle2: [9, 8, 4, 3]
+
+- name: img06.png
+  rectangle1: [1, 2, 3, 2]
+  rectangle2: [4, 2, 3, 2]
+
+- name: img07.png
+  rectangle1: [4, 9, 4, 3]
+  rectangle2: [9, 9, 4, 3]
+
+- name: img08.png
+  rectangle1: [8, 5, 3, 3]
+  rectangle2: [4, 7, 3, 3]
+
+# - name: img09.png
+#   rectangle1: []
+#   rectangle2: []
+
+- name: img10.png
+  rectangle1: [8, 3, 1, 1]
+  rectangle2: [10, 1, 1, 1]
+
+- name: img11.png
+  rectangle1: [2, 1, 4, 3]
+  rectangle2: [5, 10, 4, 3]
+
+- name: img12.png
+  rectangle1: [4, 7, 4, 3]
+  rectangle2: [1, 10, 4, 3]
+
+- name: img13.png
+  rectangle1: [7, 6, 3, 3]
+  rectangle2: [8, 3, 3, 3]
+
+- name: img14.png
+  rectangle1: [12, 8, 1, 1]
+  rectangle2: [13, 7, 1, 1]
+
+- name: img15.png
+  rectangle1: [6, 11, 1, 1]
+  rectangle2: [5, 10, 1, 1]
+
+- name: img27.png
+  rectangle1: [6, 7, 2, 2]
+  rectangle2: [8, 3, 2, 2]
+
+- name: img30.png
+  rectangle1: [9, 3, 5, 3]
+  rectangle2: [9, 0, 5, 3]
+
+- name: img24.png
+  rectangle1: [3, 6, 1, 2]
+  rectangle2: [6, 2, 1, 2]

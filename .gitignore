@@ -5,6 +5,12 @@ __pycache__/
 
 # C extensions
 *.so
+_db-q_pair_info
+_db-q_pair_info2
+matches
+matches_combined
+notebooks
+_db-q_pair*
 
 # Distribution / packaging
 .Python
@@ -35,6 +41,9 @@ MANIFEST
 # Installer logs
 pip-log.txt
 pip-delete-this-directory.txt
+
+# Checkpoints
+gator/checkpoints
 
 # Unit test / coverage reports
 htmlcov/
@@ -207,3 +216,4 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+_db-q_pair_info/
