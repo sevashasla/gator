@@ -243,8 +243,16 @@ project-root/
 │   │   ├── show/ - visualize predictions for Gator, CroCo, MAE
 │   │   └── test/ - calculate metrics for Gator and Jigsaw
 │   │
-│   ├── stereoflow/
-│   │  
+│   ├── stereoflow/ - finetuning and evaluation on optical flow and stereo disparity
+│   │   ├── train.py - main training script (supports CroCo, Gator, MAE, Jigsaw backbones)
+│   │   ├── test.py - tiled inference and metric evaluation
+│   │   ├── eval_flow.py - optical flow evaluation with visualisations on MPI-Sintel
+│   │   ├── engine.py - training loop (loss, optimiser step, wandb/tensorboard logging)
+│   │   ├── criterion.py - Laplacian loss variants for flow and stereo
+│   │   ├── datasets_flow.py - flow datasets (MPI-Sintel, FlyingChairs, …)
+│   │   ├── datasets_stereo.py - stereo datasets (KITTI, ETH3D, Middlebury, …)
+│   │   └── README.MD - detailed dataset setup and CroCo-Stereo/Flow training commands
+│   │
 │   ├── utils/ - helpful functions, derived from CroCo
 │   ├── __init__.py - contains logger
 |   └── other files derived from CroCo 
