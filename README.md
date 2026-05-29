@@ -328,7 +328,7 @@ project-root/
 │   │   └── loss.py - L21 / relative camera pose regression loss
 │   │
 │   ├── scripts/ - 
-|   |   ├── classification/ finetune (gator, jigsaw, croco, MAE) for classification
+|   |   ├── classification/- finetune (gator, jigsaw, croco, MAE) for classification
 │   │   ├── features_exploration/ - extract and analyze attention maps
 │   │   ├── gator_multiview_usage/ - test whether Gator uses the reference view
 │   │   ├── pretrainings/ - pretraing models (Gator, Jigsaw, CroCo, MAE)
