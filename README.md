@@ -93,6 +93,35 @@ uv venv && source .venv/bin/activate && uv sync --all-extras
 
 ### Optical Flow
 
+Optical flow is the task of estimating the dense 2D displacement field between two consecutive frames: for each pixel in the first image, the model predicts a vector `(u, v)` indicating where that pixel moved in the second image. The output is a `H × W × 2` field.
+
+We finetune on a mix of MPI-Sintel and FlyingChairs and evaluate on the MPI-Sintel validation split (EPE metric).
+
+```bash
+python3 gator/stereoflow/train.py flow \
+    --model        <croco|gator|mae|jigsaw_1view> \
+    --pretrained   /path/to/pretrained.ckpt \
+    --gator_config "enc_emb_dim=384,dec_emb_dim=384,enc_num_heads=6,dec_num_heads=6" \
+    --oneview_config "enc_emb_dim=384,enc_num_heads=6" \
+    --criterion    "LaplacianLossBounded()" \
+    --dataset      "40*MPISintel('subtrain_cleanpass')+40*MPISintel('subtrain_finalpass')+4*FlyingChairs('train')" \
+    --val_dataset  "MPISintel('subval_cleanpass')+MPISintel('subval_finalpass')" \
+    --lr           2e-5 \
+    --batch_size   16 \
+    --epochs       50 \
+    --img_per_epoch 30000 \
+    --output_dir   /path/to/output
+```
+
+To evaluate a trained checkpoint on MPI-Sintel:
+
+```bash
+python3 gator/stereoflow/eval_flow.py \
+    --model /path/to/checkpoint-best.pth \
+    --split subval_cleanpass \
+    --save
+```
+
 ### Relative Pose Regression
 
 ## Reference View Utilization
