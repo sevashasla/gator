@@ -18,8 +18,8 @@ from lightning.pytorch.callbacks import ModelCheckpoint, LearningRateMonitor
 import json
 import matplotlib.pyplot as plt
 
-from gator.models.model_gator import Gator, GatorConfig
-from gator.models.gator_wrapper import OptimizationParameters
+from gator.models.gator_2view.model_gator import Gator, GatorConfig
+from gator.models.jigsaw_1view.jigsaw_wrapper import OptimizationParameters
 
 
 @dataclass

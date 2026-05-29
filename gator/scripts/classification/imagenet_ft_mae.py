@@ -21,7 +21,7 @@ from lightning.pytorch.callbacks import ModelCheckpoint, LearningRateMonitor
 import json
 import matplotlib.pyplot as plt
 
-from gator.models.models_mae import MaskedAutoencoderViT
+from gator.models.mae_1view.model_mae import MAEModel
 
 
 _IMAGE_MEAN = torch.tensor([0.485, 0.456, 0.406]).view(1, 3, 1, 1)
@@ -51,7 +51,7 @@ class Args:
 
 
 class MAEClassifier(LightningModule):
-    def __init__(self, model: MaskedAutoencoderViT, embed_dim: int, lr: float, total_steps: int, warmup_steps: int):
+    def __init__(self, model: MAEModel, embed_dim: int, lr: float, total_steps: int, warmup_steps: int):
         super().__init__()
 
         self.save_hyperparameters(ignore=["model"])
@@ -269,7 +269,7 @@ def main(args: Args):
 
     train_loader, val_loader = build_dataloaders(args)
 
-    model = MaskedAutoencoderViT(
+    model = MAEModel(
         img_size=args.img_size,
         patch_size=args.patch_size,
         embed_dim=args.embed_dim,

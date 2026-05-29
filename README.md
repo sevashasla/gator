@@ -1,6 +1,6 @@
 # Gator 🐊: Cross-view Ji**g**s**a**w Objec**t**ive f**or** Self-Supervised 3D Vision
 
-## [Project Page]() | [🤗 Demo](https://huggingface.co/spaces/sevashasla2/gator) |
+## [Project Page]() | [🤗 Demo](https://huggingface.co/spaces/sevashasla2/gator)
 
 > TL;DR: Cross-view jigsaw objective is an awersome pre-training task for 3D computer vision tasks
 
@@ -102,7 +102,7 @@ python3 gator/scripts/classification/load_imagenet.py \
 
 Linear probe evaluation on ImageNet-1k: the backbone is frozen and a single linear head (`nn.Linear(embed_dim, 1000)`) is trained on top of the extracted features.
 
-#### Gator / MAE / DisBa (ViT backbone)
+#### Gator / MAE
 
 ```bash
 python3 -m gator.scripts.classification.imagenet_ft_gator \
@@ -118,7 +118,7 @@ python3 -m gator.scripts.classification.imagenet_ft_gator \
     --opt_params.max_epoch 25
 ```
 
-#### CroCo (ViT backbone)
+#### CroCo
 
 ```bash
 python3 -m gator.scripts.classification.imagenet_ft_croco \
@@ -132,7 +132,7 @@ python3 -m gator.scripts.classification.imagenet_ft_croco \
     --opt_params.max_epoch 25
 ```
 
-#### Jigsaw (DeiT backbone)
+#### Jigsaw
 
 ```bash
 python3 -m gator.scripts.classification.imagenet_ft_jigsaw \

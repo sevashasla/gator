@@ -19,7 +19,7 @@ import json
 import matplotlib.pyplot as plt
 
 from gator.models.croco import CroCoNet
-from gator.models.gator_wrapper import OptimizationParameters
+from gator.models.jigsaw_1view.jigsaw_wrapper import OptimizationParameters
 
 
 @dataclass
