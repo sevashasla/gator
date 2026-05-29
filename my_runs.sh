@@ -13,7 +13,8 @@
 # python -m gator.scripts.relpose.recall_curve \
 #   --ckpts \
 #     gator:$CKPT_GATOR/last.ckpt \
-#     croco:$CKPT_CROCO_48HRS/last.ckpt \
+#     croco48:$CKPT_CROCO_48HRS/last.ckpt \
+#     croco24:$CKPT_CROCO_24HRS/last.ckpt \
 #     mae:$CKPT_MAE/last.ckpt \
 #     jigsaw:$CKPT_JIGSAW/last.ckpt \
 #   --out visuals/relpose/recall_curve.png
@@ -76,6 +77,24 @@ nohup python3 gator/scripts/relpose/finetune_croco.py \
     --opt-params.blr 1e-6 --no-freeze-encdec \
     --output-dir /scratch/izar/bosi/gator/relpose/ \
     > nohup_relpose_croco_24hrs.log 2>&1 &
+
+# CroCo relpose - unfrozen, blr=1e-4, 24hrs ckpt
+nohup python3 gator/scripts/relpose/finetune_croco.py \
+    --inner-model-ckpt-path /scratch/izar/skorokho/gator/croco-small-001/checkpoints/last.ckpt \
+    --model_configuration "CroCoNet(enc_embed_dim=384, enc_depth=12, enc_num_heads=6, dec_embed_dim=384, dec_depth=8, dec_num_heads=6, mlp_ratio=4.0, pos_embed='RoPE100')" \
+    --exp-name croco-small-24hrs-lr-1e-4-nf \
+    --opt-params.blr 1e-4 --no-freeze-encdec \
+    --output-dir /scratch/izar/bosi/gator/relpose/ \
+    > nohup_relpose_croco_24hrs.log 2>&1 &
+
+# CroCo relpose - unfrozen, blr=1e-6, new ckpt lr=1e-4 (lowest val loss)
+nohup python3 gator/scripts/relpose/finetune_croco.py \
+    --inner-model-ckpt-path /scratch/izar/skorokho/gator/final-ckpts/croco-small-lr-1e-4-24hrs.ckpt \
+    --model_configuration "CroCoNet(enc_embed_dim=384, enc_depth=12, enc_num_heads=6, dec_embed_dim=384, dec_depth=8, dec_num_heads=6, mlp_ratio=4.0, pos_embed='RoPE100')" \
+    --exp-name croco-small-lr-1e-4-24hrs-nf \
+    --opt-params.blr 1e-6 --no-freeze-encdec \
+    --output-dir /scratch/izar/bosi/gator/relpose/ \
+    > nohup_relpose_croco_lr1e4.log 2>&1 &
 
 # Jigsaw relpose - unfrozen, blr=1e-5
 nohup python3 gator/scripts/relpose/finetune_jigsaw.py \

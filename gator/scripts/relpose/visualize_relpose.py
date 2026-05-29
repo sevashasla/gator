@@ -30,22 +30,22 @@ Usage:
 Examples:
   python -m gator.scripts.relpose.visualize_relpose \
     --ckpt /scratch/izar/skorokho/gator/relpose/gator-small-000-nf/checkpoints/last.ckpt \
-    --model_name "Gator" --scene chess --n_samples 6 \
+    --model_name "Gator" --scene chess --n_samples 4 \
     --out visuals/relpose/gator_chess.png
 
   python -m gator.scripts.relpose.visualize_relpose \
     --ckpt /scratch/izar/bosi/gator/relpose/croco-small-48hrs-lr-1e-6-nf/checkpoints/last.ckpt \
-    --model_name "CroCo" --scene chess --n_samples 6 \
+    --model_name "CroCo" --scene chess --n_samples 4 \
     --out visuals/relpose/croco_chess.png
 
   python -m gator.scripts.relpose.visualize_relpose \
     --ckpt /scratch/izar/bosi/gator/relpose/mae-small-unfrozen-blr3e5/checkpoints/last.ckpt \
-    --model_name "MAE" --scene chess --n_samples 6 \
+    --model_name "MAE" --scene chess --n_samples 4 \
     --out visuals/relpose/mae_chess.png
 
   python -m gator.scripts.relpose.visualize_relpose \
     --ckpt /scratch/izar/bosi/gator/relpose/jigsaw-small-24hrs-lr-1e-5-nf/checkpoints/last.ckpt \
-    --model_name "Jigsaw" --scene chess --n_samples 6 \
+    --model_name "Jigsaw" --scene chess --n_samples 4 \
     --out visuals/relpose/jigsaw_chess.png
 """
 
@@ -106,9 +106,22 @@ def _load_mae(cfg: dict, device) -> torch.nn.Module:
     return model.to(device)
 
 
+def _load_gator(cfg: dict, device) -> torch.nn.Module:
+    from gator.relpose.models.gator_relpose import GatorRelpose
+    from gator.models.gator_2view.model_gator import GatorConfig
+    model = GatorRelpose(
+        config=GatorConfig(**cfg['model_config']),
+        gator_ckpt_path=cfg['inner_model_ckpt_path'],
+        freeze=cfg.get('freeze_encdec', True),
+    )
+    return model.to(device)
+
+
 def build_wrapper(cfg: dict, ckpt_path: Path, device) -> RelposeWrapper:
     exp_name: str = cfg.get('exp_name', '')
-    if 'mae' in exp_name:
+    if 'gator' in exp_name:
+        inner = _load_gator(cfg, device)
+    elif 'mae' in exp_name:
         inner = _load_mae(cfg, device)
     elif 'jigsaw' in exp_name or 'model_config' in cfg:
         inner = _load_jigsaw(cfg, device)
@@ -168,7 +181,7 @@ def parse_args():
                    help='Lightning checkpoint (last.ckpt or epoch=N.ckpt)')
     p.add_argument('--scene', default='chess',
                    help='7-Scenes scene name (default: chess)')
-    p.add_argument('--n_samples', type=int, default=6,
+    p.add_argument('--n_samples', type=int, default=4,
                    help='Number of pairs to visualize')
     p.add_argument('--sort_by', choices=['best', 'best_terr', 'best_rerr', 'terr', 'rerr', 'random'],
                    default='random',

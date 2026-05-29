@@ -14,7 +14,8 @@ Usage:
   python -m gator.scripts.relpose.recall_curve \
     --ckpts \
       gator:/scratch/izar/skorokho/gator/relpose/gator-small-000-nf/checkpoints/last.ckpt \
-      croco:/scratch/izar/bosi/gator/relpose/croco-small-48hrs-lr-1e-6-nf/checkpoints/last.ckpt \
+      croco48:/scratch/izar/bosi/gator/relpose/croco-small-48hrs-lr-1e-6-nf/checkpoints/last.ckpt \
+      croco24:/scratch/izar/bosi/gator/relpose/croco-small-24hrs-lr-1e-6-nf/checkpoints/last.ckpt \
       mae:/scratch/izar/bosi/gator/relpose/mae-small-unfrozen-blr3e5/checkpoints/last.ckpt \
       jigsaw:/scratch/izar/bosi/gator/relpose/jigsaw-small-24hrs-lr-1e-5-nf/checkpoints/last.ckpt \
     --out visuals/relpose/recall_curve.png
@@ -169,10 +170,12 @@ def recall_curve(rerrs, terrs, max_threshold=20):
 
 # Color palette — distinct, presentation-friendly
 PALETTE = {
-    'gator':  '#E63946',   # red
-    'croco':  '#457B9D',   # blue
-    'mae':    '#2A9D8F',   # teal
-    'jigsaw': '#E9C46A',   # yellow
+    'gator':   '#E63946',   # red
+    'croco':   '#457B9D',   # blue
+    'croco48': '#457B9D',   # blue
+    'croco24': '#1D3557',   # dark blue
+    'mae':     '#2A9D8F',   # teal
+    'jigsaw':  '#E9C46A',   # yellow
 }
 DEFAULT_COLORS = ['#E63946', '#457B9D', '#2A9D8F', '#E9C46A', '#8338EC', '#FB5607']
 
@@ -182,9 +185,12 @@ def plot_recall_curves(results: dict[str, tuple], out: Path, max_threshold=20):
     results: {label: (rerrs, terrs)}
     """
     fig, ax = plt.subplots(figsize=(7, 5))
-    fig.patch.set_facecolor('white')
-    ax.set_facecolor('white')
 
+    # vertical reference lines at evaluation thresholds
+    for t in [5, 10, 20]:
+        ax.axvline(t, color='#cccccc', lw=0.8, ls='--', zorder=1)
+
+    legend_lines, legend_labels = [], []
     for i, (label, (rerrs, terrs)) in enumerate(results.items()):
         color = PALETTE.get(label.lower(), DEFAULT_COLORS[i % len(DEFAULT_COLORS)])
         thresholds, recall = recall_curve(rerrs, terrs, max_threshold)
@@ -195,9 +201,9 @@ def plot_recall_curves(results: dict[str, tuple], out: Path, max_threshold=20):
         auc20 = aucs['auc@20'] * 100
 
         display = label.upper() if label.lower() == 'mae' else label.capitalize()
-        legend_label = f'{display}   AUC@5={auc5:.1f}  @10={auc10:.1f}  @20={auc20:.1f}'
-        ax.plot(thresholds, recall * 100, label=legend_label, color=color, lw=2.5, zorder=3)
-        ax.fill_between(thresholds, recall * 100, alpha=0.12, color=color, zorder=2)
+        line, = ax.plot(thresholds, recall * 100, color=color, lw=2.5, zorder=3)
+        legend_lines.append(line)
+        legend_labels.append(f'{display:<8s}  @5={auc5:4.1f}  @10={auc10:4.1f}  @20={auc20:4.1f}')
 
     ax.set_xticks([0, 5, 10, 15, 20])
     ax.set_xlabel('Error threshold (degrees)', fontsize=12)
@@ -209,11 +215,11 @@ def plot_recall_curves(results: dict[str, tuple], out: Path, max_threshold=20):
     ax.spines['left'].set_color('#cccccc')
     ax.spines['bottom'].set_color('#cccccc')
     ax.tick_params(colors='#555555')
-    ax.xaxis.label.set_color('#333333')
-    ax.yaxis.label.set_color('#333333')
-    ax.set_title('Pose Recall Curve — 7-Scenes', fontsize=13, pad=12, color='#222222')
+    ax.set_title('Pose Recall — 7-Scenes', fontsize=13, pad=12)
 
-    ax.legend(loc='upper left', fontsize=10, frameon=False)
+    legend = ax.legend(legend_lines, legend_labels,
+                       loc='upper left', fontsize=9.5, frameon=False,
+                       prop={'family': 'monospace'})
 
     plt.tight_layout()
     plt.savefig(out, dpi=150, bbox_inches='tight')
@@ -253,12 +259,32 @@ def main():
         print(f'[{label}] Running inference on 7-Scenes test set...')
         rerrs, terrs = collect_errors(wrapper, device)
         results[label] = (rerrs, terrs)
-        print(f'[{label}] {len(rerrs)} pairs — median Rerr={np.median(rerrs):.2f}° Terr={np.median(terrs):.2f}°')
+        aucs = error_auc(rerrs, terrs, thresholds=[5, 10, 20])
+        print(f'[{label}] {len(rerrs)} pairs')
+        print(f'  AUC@5={aucs["auc@5"]*100:.1f}  AUC@10={aucs["auc@10"]*100:.1f}  AUC@20={aucs["auc@20"]*100:.1f}')
+        print(f'  Median rotation error:    {np.median(rerrs):.2f}°')
+        print(f'  Median translation error: {np.median(terrs):.2f}°  (angular, direction only)')
 
         del wrapper
         torch.cuda.empty_cache()
 
     args.out.parent.mkdir(parents=True, exist_ok=True)
+
+    # save all metrics to a text file next to the plot
+    metrics_path = args.out.with_suffix('.txt')
+    with open(metrics_path, 'w') as f:
+        for label, (rerrs, terrs) in results.items():
+            aucs = error_auc(rerrs, terrs, thresholds=[5, 10, 20])
+            f.write(f'[{label}]\n')
+            f.write(f'  pairs: {len(rerrs)}\n')
+            f.write(f'  AUC@5:  {aucs["auc@5"]*100:.1f}\n')
+            f.write(f'  AUC@10: {aucs["auc@10"]*100:.1f}\n')
+            f.write(f'  AUC@20: {aucs["auc@20"]*100:.1f}\n')
+            f.write(f'  Median rotation error:    {np.median(rerrs):.2f} deg\n')
+            f.write(f'  Median translation error: {np.median(terrs):.2f} deg (angular)\n')
+            f.write('\n')
+    print(f'Metrics saved → {metrics_path}')
+
     plot_recall_curves(results, args.out)
 
 
