@@ -2,7 +2,7 @@
 
 ## [Project Page]() | [🤗 Demo](https://huggingface.co/spaces/sevashasla2/gator) |
 
-> TL;DR: Explore cross-view jigsaw objective as a pretraining task for 3D computer vision tasks
+> TL;DR: Cross-view jigsaw objective is an awersome pre-training task for 3D computer vision tasks
 
 <p align="center">
   <img src="assets/croco_faster.gif" alt="Method" width="70%">
@@ -28,7 +28,7 @@ uv venv && source .venv/bin/activate && uv sync --all-extras
 ## Pre-training 🧠
 
 1. Generate dataset following the instructions [here](https://github.com/naver/croco/blob/master/datasets/habitat_sim/README.MD)
-2. Gator-Small
+2. For Gator-Small run
 
   ```bash
   python3 gator/scripts/pretrainings/pretrain_gator.py \
@@ -51,7 +51,7 @@ uv venv && source .venv/bin/activate && uv sync --all-extras
       --visualizer-config.name visual
   ```
 
-3. CroCo-Small
+3. For CroCo-Small run
 
   ```bash
   python3 gator/scripts/pretrainings/pretrain_croco.py \
@@ -66,7 +66,7 @@ uv venv && source .venv/bin/activate && uv sync --all-extras
     --exp-name experiment-name
   ```
 
-4. MAE-Small
+4. For MAE-Small run
 
   ```bash
   python3 gator/scripts/pretrainings/pretrain_mae.py \
@@ -77,7 +77,7 @@ uv venv && source .venv/bin/activate && uv sync --all-extras
     --exp-name experiment-name
   ```
 
-5. Jigsaw-Small
+5. For Jigsaw-Small run
 
   ```bash
   python3 gator/scripts/pretrainings/pretrain_jigsaw.py \
@@ -94,6 +94,85 @@ uv venv && source .venv/bin/activate && uv sync --all-extras
 ### Optical Flow
 
 ### Relative Pose Regression
+
+## Reference View Utilization
+
+### Zero Reference
+
+Run
+
+```bash
+python3 gator/scripts/gator_multiview_usage/by_zeroing.py \
+    --ckpt-path /path/to/last.ckpt \
+    --output-path /where/to/store/by_zeroing.csv \
+    --model-config.enc-emb-dim 384 --model-config.dec-emb-dim 384 \
+    --model-config.enc-num-heads 6 --model-config.dec-num-heads 6 \
+    --shuffle_ratios 0.05 0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9 0.95
+```
+
+The script creates a `by_zeroing.csv` file with results when passing the actual reference image and a zero image instead of the reference for different masking ratios.
+
+### Tiny Dataset
+
+Run
+
+```bash
+python3 gator/scripts/gator_multiview_usage/by_twin_images.py \
+    --ckpt-path /path/to/last.ckpt \
+    --exp-name exp-used-to-generate \
+    --model-config.enc-emb-dim 384 --model-config.dec-emb-dim 384 \
+    --model-config.enc-num-heads 6 --model-config.dec-num-heads 6
+```
+
+The script creates `twin_images_*.png` with reshuffling resuls and swapped object patches accuracy in `twin_images_accuracy.txt`. The idea of the method is discussed in [./docs/two_view.md](./docs/two_view.md)
+
+## Cross-Attention
+
+1. Extract q, k, v and batch images
+  ```bash
+  python3 gator/scripts/features_exploration/attention_maps.py \
+    --ckpt-path /path/to/last.ckpt \
+    --model-config.enc-emb-dim 384 --model-config.enc-num-heads 6 \
+    --model-config.dec-emb-dim 384 --model-config.dec-num-heads 6 \
+    --output-dir  /folder/to/store/qkv/ \
+    # save only cross-attention features
+    --ca-only \
+    # how many eval batches to run and save
+    --num-batches 10
+  ```
+
+  It produces folders /folder/to/store/qkv/batch_{chosen_idx:03}, with stored `qkv` and `input_batch.pth`
+
+2. Create an image grid (not necessary, but easier to understand what patches to take in the next step)
+
+  ```bash
+  python3 gator/scripts/features_exploration/show_image_grid.py \
+    --input_folder /folder/with/stored/qkv/batch \
+    # image_indices can be any set with numbers from 0 to batch_size - 1
+    --image-indices 0 5 112 3 58 \
+    # whether to show shuffled image or reference image
+    --no-reference \
+    --output_dir /folder/to/store/the/results
+  ```
+
+
+3. Create an image with shown matches
+
+  ```bash
+  python3 gator/scripts/features_exploration/cross_attn_vis2.py \
+    --input_folder /folder/with/stored/qkv/batch \
+    --output_dir /where/to/store/the/resulting/image \
+    --image_index image_index \
+    # in format y x y x y x ...
+    --patches_positions 5 4 7 5 7 10 1 9 7 7 6 3 \
+    # use _decoder_blocks.3.cross_attn-000.pth or _decoder_blocks.4.cross_attn-000.pth
+    # the later blocks (5 or 6) do not have the matching feature
+    --attention_file _decoder_blocks.4.cross_attn-000.pth
+  ```
+
+<p align="center">
+  <img src="assets/matching_example.png" alt="Method" width="70%">
+</p>
 
 ## File Hierarchy 📚
 
