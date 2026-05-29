@@ -5,6 +5,10 @@ __pycache__/
 
 # C extensions
 *.so
+matches
+matches_combined
+notebooks
+_db-q_pair*
 
 # Distribution / packaging
 .Python
