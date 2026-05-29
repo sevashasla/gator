@@ -219,3 +219,8 @@ __marimo__/
 _db-q_pair_info/
 my_runs.sh
 visuals/
+
+gator/scripts/relpose/generate_relpose_carousel.py
+gator/scripts/relpose/make_relpose_carousel.py
+gator/scripts/relpose/make_relpose_gifs.py
+gator/scripts/relpose/submit_visualize_chess.sh
