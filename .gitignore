@@ -5,6 +5,8 @@ __pycache__/
 
 # C extensions
 *.so
+_db-q_pair_info
+_db-q_pair_info2
 matches
 matches_combined
 notebooks
@@ -214,3 +216,4 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+_db-q_pair_info/
