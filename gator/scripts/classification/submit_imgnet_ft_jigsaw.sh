@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=gator_imagenet_ft
+#SBATCH --job-name=jigsaw_imagenet_ft
 #SBATCH --time=30:00:00
 #SBATCH --account=cs-503
 #SBATCH --qos=cs-503
@@ -23,14 +23,10 @@ which python
 python --version
 nvidia-smi
 
-
-python3 -m gator.scripts.classification.imagenet_ft_croco  \
-    --opt_params.batch_size 512 \
-    --opt_params.lr 1e-3 \
-    --opt_params.max_epoch 25 \
-    --enc_embed_dim 384 \
-    --enc_depth 12 \
-    --enc_num_heads 12\
-    --checkpoint_path /scratch/izar/skorokho/gator/final-ckpts/croco-small-001-48hrs.ckpt\
-    --data_dir /scratch/izar/mayila/imagenet_full
-
+python -m gator.scripts.classification.imagenet_ft_jigsaw \
+    --checkpoint_path /scratch/izar/skorokho/gator/final-ckpts/jigsaw-small-000-12hrs.ckpt\
+    --data_dir /scratch/izar/mayila/imagenet_full \
+    --model_name deit_small_patch16_224 \
+    --batch_size 512 \
+    --max_epochs 50 \
+    --lr 1e-3

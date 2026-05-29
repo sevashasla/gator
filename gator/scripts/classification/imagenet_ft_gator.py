@@ -28,7 +28,7 @@ class Args:
     opt_params: OptimizationParameters
 
     checkpoint_path: Path
-    data_dir: Path = Path("/scratch/izar/mayila/imagenet")
+    data_dir: Path = Path("/scratch/izar/mayila/imagenet_full")
     """Path to ImageNet directory with train/ and validation/ subfolders"""
 
     num_workers: int = 8
@@ -131,8 +131,8 @@ class GatorClassifier(LightningModule):
     def configure_optimizers(self):
         optimizer = torch.optim.Adam(self.head.parameters(), lr=self.lr)
 
-        # Warmup: 5% of total steps, lr rises from 0 to self.lr linearly
-        warmup_steps = max(1, int(0.05 * self.total_steps))
+        # Warmup: 10% of total steps, lr rises from 0 to self.lr linearly
+        warmup_steps = max(1, int(0.1 * self.total_steps))
         cosine_steps = self.total_steps - warmup_steps
 
         warmup = torch.optim.lr_scheduler.LinearLR(
@@ -281,7 +281,7 @@ def main(args: Args):
     print(f"  missing   : {len(missing)}  {missing[:5] if missing else ''}")
     print(f"  unexpected: {len(unexpected)}  {unexpected[:5] if unexpected else ''}")
     if n_matched == 0:
-        raise RuntimeError("No keys matched, checkpoint incompatible with model.")
+        raise RuntimeError("No keys matched ... checkpoint incompatible with model.")
 
     for p in model.parameters():
         p.requires_grad = False
@@ -301,10 +301,10 @@ def main(args: Args):
         total_steps=total_steps,
     )
 
-    wandb_logger = WandbLogger(project="gator-finetune")
+    wandb_logger = WandbLogger(project="gator-small-disba")
 
     checkpoint_callback = ModelCheckpoint(
-        dirpath="/scratch/izar/mayila/gator_checkpoints_60ep",
+        dirpath="/home/mayila/gator/gator_small_disba",
         filename="best",
         monitor="val_top1",
         mode="max",

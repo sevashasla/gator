@@ -1,6 +1,6 @@
 #!/bin/bash
 #SBATCH --job-name=download_imagenet
-#SBATCH --time=1:00:00
+#SBATCH --time=12:00:00
 #SBATCH --mem=16G
 #SBATCH --cpus-per-task=2
 #SBATCH --gres=gpu:1
@@ -11,14 +11,12 @@
 
 
 cd /home/mayila/gator/
-
 source .venv/bin/activate
 
 
 export HF_DATASETS_CACHE=/scratch/izar/mayila/.cache/huggingface
 
-python3 gator/scripts/load_imagenet.py \
-    --output_dir /scratch/izar/mayila/imagenet \
-    --splits train \
-#    --max_train_samples 700000 \
+python3 gator/scripts/classification/load_imagenet.py \
+    --output_dir /scratch/izar/mayila/imagenet_full \
+    --splits validation \
     --shuffle_buffer 10000

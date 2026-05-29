@@ -18,46 +18,38 @@ from lightning.pytorch.callbacks import ModelCheckpoint, LearningRateMonitor
 import json
 import matplotlib.pyplot as plt
 
-from gator.models.croco import CroCoNet
+from gator.models.model_gator import Gator, GatorConfig
 from gator.models.gator_wrapper import OptimizationParameters
 
 
 @dataclass
 class Args:
+    gator_config: GatorConfig
     opt_params: OptimizationParameters
 
     checkpoint_path: Path
     data_dir: Path = Path("/scratch/izar/mayila/imagenet_full")
-
-    # CroCo encoder settings — must match the checkpoint
-    enc_embed_dim: int = 768
-    enc_depth: int = 12
-    enc_num_heads: int = 12
-
-    # CroCo decoder settings — must match the checkpoint
-    dec_embed_dim: int = 512
-    dec_depth: int = 8
-    dec_num_heads: int = 16
 
     num_workers: int = 8
     seed: int = 0
     precision: Literal['16-mixed', '32'] = '16-mixed'
 
 
-class CroCoClassifier(LightningModule):
-    def __init__(self, model: CroCoNet, embed_dim: int, lr: float, total_steps: int):
+class GatorClassifier(LightningModule):
+    def __init__(self, model: Gator, embed_dim: int, num_register_tokens: int, lr: float, total_steps: int, warmup_steps: int):
         super().__init__()
 
         self.save_hyperparameters(ignore=["model"])
 
         self.model = model
         self.lr = lr
+        self.num_register_tokens = num_register_tokens
         self.total_steps = total_steps
+        self.warmup_steps = warmup_steps
 
         self.head = nn.Linear(embed_dim, 1000)
         self.criterion = nn.CrossEntropyLoss()
 
-        # Per-epoch accumulators (weighted by batch size for exact accuracy)
         self._train_loss_sum: float = 0.0
         self._train_loss_n: int = 0
 
@@ -74,8 +66,10 @@ class CroCoClassifier(LightningModule):
         }
 
     def extract_features(self, x: torch.Tensor) -> torch.Tensor:
-        feats, _, _ = self.model._encode_image(x, do_mask=False)  # (B, N, D)
-        return feats.mean(dim=1)                                    # (B, D)
+        x = (x - self.model._image_mean) / self.model._image_std
+        x_enc, _, _ = self.model._forward_encoder(x, shuffle=False)
+        patch_tokens = x_enc[:, self.num_register_tokens:]
+        return patch_tokens.mean(dim=1)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         return self.head(self.extract_features(x))
@@ -134,36 +128,32 @@ class CroCoClassifier(LightningModule):
     def configure_optimizers(self):
         optimizer = torch.optim.Adam(self.head.parameters(), lr=self.lr)
 
-        # Warmup: 10% of total steps, lr rises from 0 to self.lr linearly
-        warmup_steps = max(1, int(0.1 * self.total_steps))
-        cosine_steps = self.total_steps - warmup_steps
-
+        # warmup_steps = 10% of total_steps, passed from main()
         warmup = torch.optim.lr_scheduler.LinearLR(
             optimizer,
             start_factor=1e-6,
             end_factor=1.0,
-            total_iters=warmup_steps,
+            total_iters=self.warmup_steps,
         )
         cosine = torch.optim.lr_scheduler.CosineAnnealingLR(
             optimizer,
-            T_max=cosine_steps,
+            T_max=self.total_steps - self.warmup_steps,
             eta_min=1e-6,
         )
         scheduler = torch.optim.lr_scheduler.SequentialLR(
             optimizer,
             schedulers=[warmup, cosine],
-            milestones=[warmup_steps],
+            milestones=[self.warmup_steps],
         )
         return {
             "optimizer": optimizer,
             "lr_scheduler": {"scheduler": scheduler, "interval": "step", "frequency": 1},
         }
 
-
 # Data
 
 class ImageNetDataset(Dataset):
-    """Reads label directly from the folder name (0–999), bypassing ImageFolder's
+    """Reads label directly from the folder name (0-999), bypassing ImageFolder's
     alphabetical sorting which would assign wrong indices to numeric class names."""
 
     def __init__(self, root: str, transform=None):
@@ -175,7 +165,7 @@ class ImageNetDataset(Dataset):
         assert len(self.samples) > 0, f"No .jpg files found under {root}"
         labels = sorted({label for _, label in self.samples})
         assert labels == list(range(1000)), (
-            f"Expected labels 0–999, got {labels[:5]}…{labels[-5:]}"
+            f"Expected labels 0-999, got {labels[:5]}...{labels[-5:]}"
         )
 
     def __len__(self) -> int:
@@ -194,16 +184,11 @@ def build_dataloaders(args: Args):
         transforms.RandomResizedCrop(224),
         transforms.RandomHorizontalFlip(),
         transforms.ToTensor(),
-        # Normalization : CroCoNet does not normalize internally
-        transforms.Normalize(mean=[0.485, 0.456, 0.406],
-                             std=[0.229, 0.224, 0.225]),
     ])
     transform_val = transforms.Compose([
         transforms.Resize(256),
         transforms.CenterCrop(224),
         transforms.ToTensor(),
-        transforms.Normalize(mean=[0.485, 0.456, 0.406],
-                             std=[0.229, 0.224, 0.225]),
     ])
 
     train_ds = ImageNetDataset(str(args.data_dir / "train"),      transform=transform_train)
@@ -218,6 +203,8 @@ def build_dataloaders(args: Args):
         num_workers=args.num_workers,
         pin_memory=True,
         shuffle=True,
+        persistent_workers=True,
+        prefetch_factor=2,
     )
     val_loader = DataLoader(
         val_ds,
@@ -225,19 +212,20 @@ def build_dataloaders(args: Args):
         num_workers=args.num_workers,
         pin_memory=True,
         shuffle=False,
+        persistent_workers=True,
+        prefetch_factor=2,
     )
     return train_loader, val_loader
 
-
 # Plotting / saving
 
-def save_metrics(module: CroCoClassifier, path: str = "metrics_croco.json"):
+def save_metrics(module: GatorClassifier, path: str = "metrics.json"):
     with open(path, "w") as f:
         json.dump(module.history, f, indent=2)
     print(f"Metrics saved to {path}")
 
 
-def plot(module: CroCoClassifier, path: str = "training_curves_croco.png"):
+def plot(module: GatorClassifier, path: str = "training_curves.png"):
     h = module.history
     epochs = range(1, len(h["train_loss"]) + 1)
 
@@ -264,7 +252,6 @@ def plot(module: CroCoClassifier, path: str = "training_curves_croco.png"):
     plt.savefig(path)
     print(f"Plot saved to {path}")
 
-
 # Main
 
 def main(args: Args):
@@ -273,44 +260,24 @@ def main(args: Args):
 
     train_loader, val_loader = build_dataloaders(args)
 
-    model = CroCoNet(
-        enc_embed_dim=args.enc_embed_dim,
-        enc_depth=args.enc_depth,
-        enc_num_heads=args.enc_num_heads,
-        dec_embed_dim=args.dec_embed_dim,
-        dec_depth=args.dec_depth,
-        dec_num_heads=args.dec_num_heads,
-    )
+    model = Gator(args.gator_config)
 
     ckpt = torch.load(args.checkpoint_path, map_location="cpu")
-    raw = ckpt.get("state_dict", ckpt)
+    state_dict = {
+        k.replace("_model.", ""): v
+        for k, v in ckpt["state_dict"].items()
+        if k.startswith("_model.")
+    }
 
-    state_dict = {}
-    for k, v in raw.items():
-        if k.startswith("_model._"):
-            new_key = k[len("_model._"):]
-        elif k.startswith("_model."):
-            new_key = k[len("_model."):]
-        elif k.startswith("model."):
-            new_key = k[len("model."):]
-        else:
-            new_key = k
-        
-        # Skip decoder keys — not used for classification
-        if new_key.startswith("dec") or new_key in ("mask_token", "prediction_head.weight", "prediction_head.bias"):
-            continue
-        
-        state_dict[new_key] = v
-
+    n_model = len(model.state_dict())
     missing, unexpected = model.load_state_dict(state_dict, strict=False)
-    n_model   = len(model.state_dict())
     n_matched = n_model - len(missing)
     print(f"\n[Checkpoint loading]")
     print(f"  matched   : {n_matched} / {n_model} keys")
     print(f"  missing   : {len(missing)}  {missing[:5] if missing else ''}")
     print(f"  unexpected: {len(unexpected)}  {unexpected[:5] if unexpected else ''}")
     if n_matched == 0:
-        raise RuntimeError("No keys matched — checkpoint incompatible with model.")
+        raise RuntimeError("No keys matched ... checkpoint incompatible with model.")
 
     for p in model.parameters():
         p.requires_grad = False
@@ -319,20 +286,24 @@ def main(args: Args):
     args.opt_params.update_lr()
 
     steps_per_epoch = len(train_loader)
-    total_steps = args.opt_params.max_epoch * steps_per_epoch
-    print(f"steps/epoch={steps_per_epoch}, total_steps={total_steps}", flush=True)
+    total_steps     = args.opt_params.max_epoch * steps_per_epoch
+    warmup_steps    = max(1, int(0.1 * total_steps))  # 10% warmup
 
-    module = CroCoClassifier(
+    print(f"steps/epoch={steps_per_epoch}, total_steps={total_steps}, warmup_steps={warmup_steps}", flush=True)
+
+    module = GatorClassifier(
         model=model,
-        embed_dim=args.enc_embed_dim,
+        embed_dim=args.gator_config.enc_emb_dim,
+        num_register_tokens=args.gator_config.num_register_tokens,
         lr=args.opt_params.lr,
         total_steps=total_steps,
+        warmup_steps=warmup_steps,
     )
 
-    wandb_logger = WandbLogger(project="croco-gator-small-48")
+    wandb_logger = WandbLogger(project="jigsaw_small_24")
 
     checkpoint_callback = ModelCheckpoint(
-        dirpath="/scratch/izar/mayila/croco_small_48",
+        dirpath="/scratch/izar/mayila/jigsaw_small_24",
         filename="best",
         monitor="val_top1",
         mode="max",

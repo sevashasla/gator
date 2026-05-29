@@ -5,9 +5,12 @@ import torch.backends.cudnn as cudnn
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
+from functools import partial
 
 import torchvision.transforms as transforms
-from torch.utils.data import Dataset, DataLoader
+from torch.utils.data import DataLoader
+from torchvision.datasets import ImageFolder
+from torch.utils.data import Dataset
 from PIL import Image
 
 import tyro
@@ -18,34 +21,37 @@ from lightning.pytorch.callbacks import ModelCheckpoint, LearningRateMonitor
 import json
 import matplotlib.pyplot as plt
 
-from gator.models.croco import CroCoNet
-from gator.models.gator_wrapper import OptimizationParameters
+from gator.models.models_mae import MaskedAutoencoderViT
+
+
+_IMAGE_MEAN = torch.tensor([0.485, 0.456, 0.406]).view(1, 3, 1, 1)
+_IMAGE_STD  = torch.tensor([0.229, 0.224, 0.225]).view(1, 3, 1, 1)
 
 
 @dataclass
 class Args:
-    opt_params: OptimizationParameters
-
     checkpoint_path: Path
     data_dir: Path = Path("/scratch/izar/mayila/imagenet_full")
 
-    # CroCo encoder settings — must match the checkpoint
-    enc_embed_dim: int = 768
-    enc_depth: int = 12
-    enc_num_heads: int = 12
+    # MAE architecture
+    embed_dim: int = 768
+    depth: int = 12
+    num_heads: int = 12
+    patch_size: int = 16
+    img_size: int = 224
 
-    # CroCo decoder settings — must match the checkpoint
-    dec_embed_dim: int = 512
-    dec_depth: int = 8
-    dec_num_heads: int = 16
+    # Training
+    lr: float = 1e-3
+    batch_size: int = 256
+    max_epochs: int = 60
 
     num_workers: int = 8
     seed: int = 0
     precision: Literal['16-mixed', '32'] = '16-mixed'
 
 
-class CroCoClassifier(LightningModule):
-    def __init__(self, model: CroCoNet, embed_dim: int, lr: float, total_steps: int):
+class MAEClassifier(LightningModule):
+    def __init__(self, model: MaskedAutoencoderViT, embed_dim: int, lr: float, total_steps: int, warmup_steps: int):
         super().__init__()
 
         self.save_hyperparameters(ignore=["model"])
@@ -53,18 +59,15 @@ class CroCoClassifier(LightningModule):
         self.model = model
         self.lr = lr
         self.total_steps = total_steps
+        self.warmup_steps = warmup_steps
 
         self.head = nn.Linear(embed_dim, 1000)
         self.criterion = nn.CrossEntropyLoss()
 
-        # Per-epoch accumulators (weighted by batch size for exact accuracy)
-        self._train_loss_sum: float = 0.0
-        self._train_loss_n: int = 0
-
-        self._val_loss_sum: float = 0.0
-        self._val_correct_top1: float = 0.0
-        self._val_correct_top5: float = 0.0
-        self._val_n: int = 0
+        self._train_loss_buf: list[float] = []
+        self._val_loss_buf: list[float] = []
+        self._val_top1_buf: list[float] = []
+        self._val_top5_buf: list[float] = []
 
         self.history: dict[str, list[float]] = {
             "train_loss": [],
@@ -74,8 +77,13 @@ class CroCoClassifier(LightningModule):
         }
 
     def extract_features(self, x: torch.Tensor) -> torch.Tensor:
-        feats, _, _ = self.model._encode_image(x, do_mask=False)  # (B, N, D)
-        return feats.mean(dim=1)                                    # (B, D)
+        mean = _IMAGE_MEAN.to(x.device)
+        std  = _IMAGE_STD.to(x.device)
+        x = (x - mean) / std
+        # mask_ratio=0 → no masking, all patches visible
+        x_enc, _, _ = self.model.forward_encoder(x, mask_ratio=0.0)
+        # CLS token is at index 0
+        return x_enc[:, 0, :]  # (B, embed_dim)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         return self.head(self.extract_features(x))
@@ -86,73 +94,67 @@ class CroCoClassifier(LightningModule):
         loss = self.criterion(logits, y)
         acc = (logits.float().argmax(dim=1) == y).float().mean()
 
-        n = y.size(0)
-        self._train_loss_sum += loss.detach().cpu().item() * n
-        self._train_loss_n += n
-
+        self._train_loss_buf.append(loss.detach().cpu().item())
         self.log("train_loss", loss, prog_bar=True)
         self.log("train_acc",  acc,  prog_bar=True)
 
         return loss
 
     def on_train_epoch_end(self):
-        if self._train_loss_n > 0:
-            self.history["train_loss"].append(self._train_loss_sum / self._train_loss_n)
-        self._train_loss_sum = 0.0
-        self._train_loss_n = 0
+        if self._train_loss_buf:
+            self.history["train_loss"].append(sum(self._train_loss_buf) / len(self._train_loss_buf))
+            self._train_loss_buf.clear()
 
     def validation_step(self, batch, batch_idx):
         x, y = batch
         logits = self(x)
         loss = self.criterion(logits, y)
 
-        n = y.size(0)
-        correct_top1 = (logits.float().argmax(dim=1) == y).sum().item()
-        correct_top5 = (logits.float().topk(5, dim=1).indices == y.unsqueeze(1)).any(dim=1).sum().item()
+        top1 = (logits.float().argmax(dim=1) == y).float().mean()
+        top5 = (logits.float().topk(5, dim=1).indices == y.unsqueeze(1)).any(dim=1).float().mean()
 
-        self._val_loss_sum += loss.detach().cpu().item() * n
-        self._val_correct_top1 += correct_top1
-        self._val_correct_top5 += correct_top5
-        self._val_n += n
+        if batch_idx == 0:
+            feats = self.extract_features(x)
+            self.log("debug/feat_mean", feats.mean().item(), on_step=True, on_epoch=False)
+            self.log("debug/feat_std",  feats.std().item(),  on_step=True, on_epoch=False)
+            print(f"[VAL epoch {self.current_epoch}] feat mean={feats.mean():.4f} std={feats.std():.4f} labels min={y.min().item()} max={y.max().item()}", flush=True)
 
-        top1 = correct_top1 / n
-        top5 = correct_top5 / n
+        self._val_loss_buf.append(loss.detach().cpu().item())
+        self._val_top1_buf.append(top1.detach().cpu().item())
+        self._val_top5_buf.append(top5.detach().cpu().item())
+
         self.log("val_loss", loss,  prog_bar=True,  on_step=False, on_epoch=True)
         self.log("val_top1", top1,  prog_bar=True,  on_step=False, on_epoch=True)
         self.log("val_top5", top5,  prog_bar=False, on_step=False, on_epoch=True)
 
     def on_validation_epoch_end(self):
-        if self._val_n > 0:
-            self.history["val_loss"].append(self._val_loss_sum / self._val_n)
-            self.history["val_top1"].append(self._val_correct_top1 / self._val_n)
-            self.history["val_top5"].append(self._val_correct_top5 / self._val_n)
-        self._val_loss_sum = 0.0
-        self._val_correct_top1 = 0.0
-        self._val_correct_top5 = 0.0
-        self._val_n = 0
+        if self._val_loss_buf:
+            self.history["val_loss"].append(sum(self._val_loss_buf) / len(self._val_loss_buf))
+            self.history["val_top1"].append(sum(self._val_top1_buf) / len(self._val_top1_buf))
+            self.history["val_top5"].append(sum(self._val_top5_buf) / len(self._val_top5_buf))
+            self._val_loss_buf.clear()
+            self._val_top1_buf.clear()
+            self._val_top5_buf.clear()
 
     def configure_optimizers(self):
         optimizer = torch.optim.Adam(self.head.parameters(), lr=self.lr)
 
-        # Warmup: 10% of total steps, lr rises from 0 to self.lr linearly
-        warmup_steps = max(1, int(0.1 * self.total_steps))
-        cosine_steps = self.total_steps - warmup_steps
-
+        # warmup_steps = 10% of total_steps, passed from main()
         warmup = torch.optim.lr_scheduler.LinearLR(
             optimizer,
             start_factor=1e-6,
             end_factor=1.0,
-            total_iters=warmup_steps,
+            total_iters=self.warmup_steps,
         )
         cosine = torch.optim.lr_scheduler.CosineAnnealingLR(
             optimizer,
-            T_max=cosine_steps,
+            T_max=self.total_steps - self.warmup_steps,
             eta_min=1e-6,
         )
         scheduler = torch.optim.lr_scheduler.SequentialLR(
             optimizer,
             schedulers=[warmup, cosine],
-            milestones=[warmup_steps],
+            milestones=[self.warmup_steps],
         )
         return {
             "optimizer": optimizer,
@@ -163,8 +165,7 @@ class CroCoClassifier(LightningModule):
 # Data
 
 class ImageNetDataset(Dataset):
-    """Reads label directly from the folder name (0–999), bypassing ImageFolder's
-    alphabetical sorting which would assign wrong indices to numeric class names."""
+    """Reads label directly from the folder name (0-999)"""
 
     def __init__(self, root: str, transform=None):
         self.transform = transform
@@ -175,7 +176,7 @@ class ImageNetDataset(Dataset):
         assert len(self.samples) > 0, f"No .jpg files found under {root}"
         labels = sorted({label for _, label in self.samples})
         assert labels == list(range(1000)), (
-            f"Expected labels 0–999, got {labels[:5]}…{labels[-5:]}"
+            f"Expected labels 0-999, got {labels[:5]}...{labels[-5:]}"
         )
 
     def __len__(self) -> int:
@@ -194,16 +195,11 @@ def build_dataloaders(args: Args):
         transforms.RandomResizedCrop(224),
         transforms.RandomHorizontalFlip(),
         transforms.ToTensor(),
-        # Normalization : CroCoNet does not normalize internally
-        transforms.Normalize(mean=[0.485, 0.456, 0.406],
-                             std=[0.229, 0.224, 0.225]),
     ])
     transform_val = transforms.Compose([
         transforms.Resize(256),
         transforms.CenterCrop(224),
         transforms.ToTensor(),
-        transforms.Normalize(mean=[0.485, 0.456, 0.406],
-                             std=[0.229, 0.224, 0.225]),
     ])
 
     train_ds = ImageNetDataset(str(args.data_dir / "train"),      transform=transform_train)
@@ -214,14 +210,14 @@ def build_dataloaders(args: Args):
 
     train_loader = DataLoader(
         train_ds,
-        batch_size=args.opt_params.batch_size,
+        batch_size=args.batch_size,
         num_workers=args.num_workers,
         pin_memory=True,
         shuffle=True,
     )
     val_loader = DataLoader(
         val_ds,
-        batch_size=args.opt_params.batch_size,
+        batch_size=args.batch_size,
         num_workers=args.num_workers,
         pin_memory=True,
         shuffle=False,
@@ -231,13 +227,13 @@ def build_dataloaders(args: Args):
 
 # Plotting / saving
 
-def save_metrics(module: CroCoClassifier, path: str = "metrics_croco.json"):
+def save_metrics(module: MAEClassifier, path: str = "metrics_mae.json"):
     with open(path, "w") as f:
         json.dump(module.history, f, indent=2)
     print(f"Metrics saved to {path}")
 
 
-def plot(module: CroCoClassifier, path: str = "training_curves_croco.png"):
+def plot(module: MAEClassifier, path: str = "training_curves_mae.png"):
     h = module.history
     epochs = range(1, len(h["train_loss"]) + 1)
 
@@ -273,66 +269,65 @@ def main(args: Args):
 
     train_loader, val_loader = build_dataloaders(args)
 
-    model = CroCoNet(
-        enc_embed_dim=args.enc_embed_dim,
-        enc_depth=args.enc_depth,
-        enc_num_heads=args.enc_num_heads,
-        dec_embed_dim=args.dec_embed_dim,
-        dec_depth=args.dec_depth,
-        dec_num_heads=args.dec_num_heads,
+    model = MaskedAutoencoderViT(
+        img_size=args.img_size,
+        patch_size=args.patch_size,
+        embed_dim=args.embed_dim,
+        depth=args.depth,
+        num_heads=args.num_heads,
+        decoder_embed_dim=512,
+        decoder_depth=8,
+        decoder_num_heads=16,
+        mlp_ratio=4,
+        norm_layer=partial(nn.LayerNorm, eps=1e-6),
     )
 
     ckpt = torch.load(args.checkpoint_path, map_location="cpu")
-    raw = ckpt.get("state_dict", ckpt)
+    ckpt = torch.load(args.checkpoint_path, map_location="cpu")
 
-    state_dict = {}
-    for k, v in raw.items():
-        if k.startswith("_model._"):
-            new_key = k[len("_model._"):]
-        elif k.startswith("_model."):
-            new_key = k[len("_model."):]
-        elif k.startswith("model."):
-            new_key = k[len("model."):]
-        else:
-            new_key = k
-        
-        # Skip decoder keys — not used for classification
-        if new_key.startswith("dec") or new_key in ("mask_token", "prediction_head.weight", "prediction_head.bias"):
-            continue
-        
-        state_dict[new_key] = v
-
+    # Support both original MAE checkpoints (.pth) and Lightning checkpoints (.ckpt)
+    if "state_dict" in ckpt and any(k.startswith("model.") for k in ckpt["state_dict"]):
+        # Lightning checkpoint
+        state_dict = {
+            k.replace("model.", ""): v
+            for k, v in ckpt["state_dict"].items()
+            if k.startswith("model.")
+        }
+    else:
+        # Original MAE checkpoint
+        state_dict = ckpt.get("model", ckpt.get("state_dict", ckpt))
     missing, unexpected = model.load_state_dict(state_dict, strict=False)
     n_model   = len(model.state_dict())
     n_matched = n_model - len(missing)
-    print(f"\n[Checkpoint loading]")
-    print(f"  matched   : {n_matched} / {n_model} keys")
-    print(f"  missing   : {len(missing)}  {missing[:5] if missing else ''}")
+    print(f"\n[CHECK] Checkpoint loading")
+    print(f"  matched  : {n_matched} / {n_model} keys")
+    print(f"  missing  : {len(missing)}  {missing[:5] if missing else ''}")
     print(f"  unexpected: {len(unexpected)}  {unexpected[:5] if unexpected else ''}")
     if n_matched == 0:
-        raise RuntimeError("No keys matched — checkpoint incompatible with model.")
+        raise RuntimeError("No keys matched ... checkpoint incompatible with model.")
 
     for p in model.parameters():
         p.requires_grad = False
     model.eval()
 
-    args.opt_params.update_lr()
-
     steps_per_epoch = len(train_loader)
-    total_steps = args.opt_params.max_epoch * steps_per_epoch
-    print(f"steps/epoch={steps_per_epoch}, total_steps={total_steps}", flush=True)
+    total_steps     = args.max_epochs * steps_per_epoch
+    warmup_steps    = max(1, int(0.1 * total_steps))  # 10% warmup
 
-    module = CroCoClassifier(
+    print(f"steps/epoch={steps_per_epoch}, total_steps={total_steps}, warmup_steps={warmup_steps}", flush=True)
+
+    module = MAEClassifier(
         model=model,
-        embed_dim=args.enc_embed_dim,
-        lr=args.opt_params.lr,
+        embed_dim=args.embed_dim,
+        lr=args.lr,
         total_steps=total_steps,
+        warmup_steps=warmup_steps,
     )
 
-    wandb_logger = WandbLogger(project="croco-gator-small-48")
+    wandb_logger = WandbLogger(project="mae-finetune")
 
     checkpoint_callback = ModelCheckpoint(
-        dirpath="/scratch/izar/mayila/croco_small_48",
+        dirpath="/scratch/izar/mayila/mae_checkpoints",
         filename="best",
         monitor="val_top1",
         mode="max",
@@ -341,7 +336,7 @@ def main(args: Args):
     )
 
     trainer = Trainer(
-        max_epochs=args.opt_params.max_epoch,
+        max_epochs=args.max_epochs,
         accelerator="gpu",
         devices=1,
         precision=args.precision,

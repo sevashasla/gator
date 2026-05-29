@@ -1,10 +1,3 @@
-"""
-Download ImageNet-1k from HuggingFace and save it as ImageFolder-compatible structure.
-
-Size estimates:
-    full train         ~167GB
-    full val           ~6GB  (50k images, always downloaded fully)
-"""
 import sys
 # Remove gator package from path to avoid shadowing HuggingFace datasets
 sys.path = [p for p in sys.path if 'gator' not in p]
@@ -79,7 +72,7 @@ def main():
         "--output_dir",
         type=str,
         required=True,
-        help="Directory to save ImageNet (e.g. /scratch/izar/mayila/imagenet)",
+        help="Directory to save ImageNet (e.g. /scratch/izar/mayila/imagenet_full)",
     )
     parser.add_argument(
         "--splits",
