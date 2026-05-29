@@ -176,23 +176,54 @@ The script creates `twin_images_*.png` with reshuffling resuls and swapped objec
 
 ## File Hierarchy 📚
 
+
 ```
 project-root/
 ├── README.md — Project overview and setup instructions.
-├── package.json — Project metadata, scripts, and dependencies.
-├── docs/
-│   ├── diffusion_editing/
-│   ├── visual_anagrams/
-│   └── two_view.md
+├── docs/ - Documentation folder
+│   ├── two_view.md - description for experiments testing whether Gator uses the reference view
+│   ├── diffusion_editing/ - uses a TinyDataset of 15 images, where for each image we can swap some of its patches and resulting image still looks realistic
+│   └── visual_anagrams/ - initially we experimented generating those images fully with diffusion models and swapping of large portion of patches, but it did not work since patches border were visible.
 │
-├── assets/
-├── gator/
 │
+├── assets/ - images used for README.md
+├── gator/ - the main folder with code
+│   ├── datasets/ - generate dataset (derived and adapted from CroCo)
+│   │   ├──  shard/ - shard the dataset
+│   │   │   ├── create_shards.py - construct shards from raw dataset
+│   │   │   └── transforms.py - data transformation and augmentations for training
+│   │   └── other files derived from CroCo
+│   │
+│   ├── models/
+│   │   ├── gator_2view/ - Gator model implementation
+│   │   ├── gator_losses/ - Jigsaw objectives
+│   │   ├── gator_visualizer/ - Classes to visualize models predictions
+│   │   ├── jigsaw_1view/ - Jigsaw model implementation
+│   │   ├── mae_1view - MAE model implementation
+│   │   ├── croco_wrapper.py - CroCo PyTorch Lightning wrapper
+│   │   └── other files derived from CroCo
+│   │
+│   ├── relpose/
+│   │
+│   ├── scripts/ -  
+│   │   ├── features_exploration/ - extract and analyze attention maps
+│   │   ├── gator_multiview_usage/ - test whether Gator uses the reference view
+│   │   ├── pretrainings/ - pretraing models (Gator, Jigsaw, CroCo, MAE)
+│   │   ├── pretrainings_ddp/ - pretraing models (Gator, Jigsaw, CroCo, MAE) on multiple GPUs
+│   │   ├── relpose/ - scripts to finetune models on Relative Pose Estimation task
+│   │   ├── show/ - visualize predictions for Gator, CroCo, MAE
+│   │   └── test/ - calculate metrics for Gator and Jigsaw
+│   │
+│   ├── stereoflow/
+│   │  
+│   ├── utils/ - helpful functions, derived from CroCo
+│   ├── __init__.py - contains logger
+|   └── other files derived from CroCo 
+|   
 ├── .gitignore
 ├── .python-version
-├── pyproject.toml
-├── README.md
-└── uv.lock
+├── pyproject.toml - dependencies
+└── uv.lock - used versions of dependencies
 ```
 
 ## Acknowledgements

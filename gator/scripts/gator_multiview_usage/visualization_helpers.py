@@ -47,7 +47,7 @@ def draw_rectangle(
     plt.show()
     ```
     """
-    image = cv2.resize(image, (output_size, output_size), interpolation=cv2.INTER_AREA)
+    # image = cv2.resize(image, (output_size, output_size), interpolation=cv2.INTER_AREA)
     patch_size = output_size // num_patches
 
     y_min, x_min, h, w = rectangle
