@@ -87,7 +87,7 @@ def build_wrapper(cfg, ckpt_path, device):
         loss_fn=RelativeCameraPoseRegression(L21Loss()),
         optimization_config=RelposeOptimizationParameters(),
     )
-    ckpt_data = torch.load(ckpt_path, map_location=device)
+    ckpt_data = torch.load(ckpt_path, map_location=device, weights_only=False)
     wrapper.load_state_dict(ckpt_data['state_dict'])
     wrapper.eval()
     return wrapper.to(device)
