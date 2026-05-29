@@ -8,6 +8,8 @@
   <img src="assets/croco_faster.gif" alt="Method" width="70%">
 </p>
 
+*Abstract:* Current cross-view self-supervised methods for 3D vision commonly rely on pixel reconstruction, which can bias representations toward low-level appearance rather than the geometric correspondences required for downstream tasks such as relative pose and optical flow estimation. We introduce GATOR, a two-view jigsaw pretraining objective in which a Vision Transformer recovers the original positions of shuffled patches from one view by cross-attending to an unshuffled reference view. This formulation reframes pretraining as discrete patch-position classification rather than pixel-level reconstruction, encouraging the model to learn view-consistent geometric structure. Under matched compute, GATOR outperforms CroCo, single-view jigsaw, and MAE baselines on downstream transfer, demonstrating that geometry-centric pretraining objectives can produce stronger correspondence features than reconstruction-based alternatives.
+
 ## Installation ⚙️
 
 1. Install [uv](https://docs.astral.sh/uv/getting-started/installation/)
