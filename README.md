@@ -124,6 +124,41 @@ python3 gator/stereoflow/eval_flow.py \
 
 ### Relative Pose Regression
 
+Relative pose regression is the task of predicting the relative camera transformation (rotation and translation) between two images of the same scene. We finetune on the [7-Scenes](https://www.microsoft.com/en-us/research/project/rgb-d-dataset-7-scenes/) dataset and evaluate on the 7-Scenes test split (pose recall metric), following [Reloc3r](https://github.com/ffrivera0/reloc3r).
+
+Preprocess the dataset to build image-retrieval pairs (cached in `_db-q_pair_info/`):
+
+```bash
+bash gator/scripts/relpose/preprocess_7scenes.sh
+```
+
+For Gator-Small run:
+
+```bash
+python3 gator/scripts/relpose/finetune_gator.py \
+    --inner-model-ckpt-path /path/to/pretrained.ckpt \
+    --model-config.enc-emb-dim 384 \
+    --model-config.dec-emb-dim 384 \
+    --model-config.enc-num-heads 6 \
+    --model-config.dec-num-heads 6 \
+    --exp-name experiment-name \
+    --output-dir /path/to/output
+```
+
+Analogous scripts exist for CroCo (`finetune_croco.py`), MAE (`finetune_mae.py`), and Jigsaw (`finetune_jigsaw.py`). By default the encoder/decoder is frozen and only the pose head is trained.
+
+To evaluate a trained checkpoint on 7-Scenes:
+
+```bash
+python3 gator/scripts/relpose/eval_gator.py \
+    --inner-model-ckpt-path /path/to/pretrained.ckpt \
+    --model-config.enc-emb-dim 384 \
+    --model-config.dec-emb-dim 384 \
+    --model-config.enc-num-heads 6 \
+    --model-config.dec-num-heads 6 \
+    --ckpt-path /path/to/last.ckpt
+```
+
 ## Reference View Utilization
 
 ### Zero Reference
@@ -232,7 +267,12 @@ project-root/
 │   │   ├── croco_wrapper.py - CroCo PyTorch Lightning wrapper
 │   │   └── other files derived from CroCo
 │   │
-│   ├── relpose/
+│   ├── relpose/ - relative pose estimation module (based on Reloc3r)
+│   │   ├── datasets/ - 7-Scenes dataset loaders and retrieval datasets
+│   │   ├── image_retrieval/ - NetVLAD-based top-k retrieval
+│   │   ├── models/ - per-backbone relpose wrappers (Gator, CroCo, MAE, Jigsaw)
+│   │   ├── utils/ - geometry, metric, and image utilities
+│   │   └── loss.py - L21 / relative camera pose regression loss
 │   │
 │   ├── scripts/ -  
 │   │   ├── features_exploration/ - extract and analyze attention maps
