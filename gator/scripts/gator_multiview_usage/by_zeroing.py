@@ -210,9 +210,9 @@ def main(args: ArgumentsGator):
             "zero": False,
         })
 
-    result_pd = pd.DataFrame(result)
-    result_pd.to_csv(args.output_path, index=False)
-    logger.info("Saved results to " + str(args.output_path))
+        result_pd = pd.DataFrame(result)
+        result_pd.to_csv(args.output_path, index=False)
+        logger.info("Saved results to " + str(args.output_path))
 
 
 if __name__ == '__main__':

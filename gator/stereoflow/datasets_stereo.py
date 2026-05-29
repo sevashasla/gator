@@ -40,6 +40,8 @@ dataset_to_root = {
     'Kitti12': '/scratch/izar/porpigli/kitti-stereo-2012/',
     'Kitti15': '/scratch/izar/porpigli/kitti-stereo-2015/',
     'Booster': '/scratch/izar/porpigli/booster_gt/',
+    'Middlebury2014': '/scratch/izar/porpigli/middlebury/2014/',
+    'Middlebury2021': '/scratch/izar/porpigli/middlebury/2021/data'
 }
 cache_dir = "/scratch/izar/porpigli/datasets_stereo_cache/"
 
@@ -248,6 +250,7 @@ class Md14Dataset(StereoDataset):
         trainpairs = []
         for s in seqs:
             trainpairs += [s+'/im1.png',s+'/im1E.png',s+'/im1L.png']
+        print(f"LEN: {len(trainpairs)}")
         assert len(trainpairs)==138
         valseqs = ['Umbrella-imperfect','Vintage-perfect']
         assert all(s in seqs for s in valseqs)

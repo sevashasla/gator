@@ -7,6 +7,8 @@ class GatorBaseLoss(nn.Module):
             self,
             grid_size: tuple[int, int],
             patch_size: int,
+            *args,
+            **kwargs,
         ):
         super().__init__()
 

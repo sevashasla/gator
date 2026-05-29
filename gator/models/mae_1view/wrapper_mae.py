@@ -148,7 +148,7 @@ class MAE1ViewWrapper(Jigsaw1ViewWrapper):
         )
         self.log("val_loss", loss, on_step=False, on_epoch=True, sync_dist=True)
 
-        if batch_idx == 0:
+        if batch_idx == 0 and self.trainer.is_global_zero:
             self._my_log_images(
                 batch=batch, 
                 out=out, 
